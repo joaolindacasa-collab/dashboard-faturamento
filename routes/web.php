@@ -13,7 +13,7 @@ Route::get('/', function () {
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-    Route::get('/status', [StatusController::class, 'index'])->name('status');
+    Route::get('/sync-status', [StatusController::class, 'index'])->name('status');
 });
 
 Route::middleware('auth')->group(function () {
