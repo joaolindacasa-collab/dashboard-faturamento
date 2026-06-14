@@ -26,7 +26,7 @@ class OrderSyncService
      * pedidos desses meses que não voltaram (status mudou pra fora do filtro,
      * ex.: cancelado). incremental: só os últimos N dias.
      */
-    public function sync(string $mode = 'incremental', ?callable $onProgress = null): SyncLog
+    public function sync(string $mode = 'incremental', ?callable $onProgress = null, ?array $onlyCompanies = null): SyncLog
     {
         $tz = config('tiny.timezone', 'America/Sao_Paulo');
         $now = Carbon::now($tz);
@@ -43,9 +43,18 @@ class OrderSyncService
         $totals = [];
         $totalSeen = 0;
         $totalUpserted = 0;
+        $okCompanies = [];
+        $skipped = [];
 
-        try {
-            foreach (array_keys($this->client->companies()) as $slug) {
+        $slugs = array_keys($this->client->companies());
+        if ($onlyCompanies) {
+            $slugs = array_values(array_filter($slugs, fn ($s) => in_array($s, $onlyCompanies, true)));
+        }
+
+        // Cada empresa é isolada: se uma não está conectada / sem credenciais,
+        // ela é PULADA (logada) e o sync continua com as demais.
+        foreach ($slugs as $slug) {
+            try {
                 [$days, $isFullScope] = $this->daysToFetch($mode, $now);
 
                 $access = $this->client->accessTokenFor($slug);
@@ -103,26 +112,33 @@ class OrderSyncService
                 $totals[$slug] = ['seen' => $seen, 'upserted' => $upserted];
                 $totalSeen += $seen;
                 $totalUpserted += $upserted;
+                $okCompanies[] = $slug;
+            } catch (\Throwable $e) {
+                Log::warning("[tiny:sync] empresa '{$slug}' pulada: ".$e->getMessage());
+                $totals[$slug] = ['error' => $e->getMessage()];
+                $skipped[$slug] = $e->getMessage();
+                if ($onProgress) {
+                    $onProgress($slug, 'PULADA: '.$e->getMessage(), 0);
+                }
             }
-
-            $log->update([
-                'status' => 'ok',
-                'totals' => $totals,
-                'orders_seen' => $totalSeen,
-                'orders_upserted' => $totalUpserted,
-                'finished_at' => now(),
-                'message' => "OK ({$mode}). Pedidos vistos: {$totalSeen}, gravados: {$totalUpserted}.",
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('[tiny:sync] '.$e->getMessage());
-            $log->update([
-                'status' => 'error',
-                'message' => $e->getMessage(),
-                'totals' => $totals,
-                'finished_at' => now(),
-            ]);
-            throw $e;
         }
+
+        // status ok se pelo menos uma empresa sincronizou; error só se nenhuma.
+        $status = empty($okCompanies) ? 'error' : 'ok';
+        $parts = [($status === 'ok' ? 'OK' : 'FALHOU')." ({$mode})", count($okCompanies).' empresa(s) sincronizada(s)'];
+        if ($skipped) {
+            $parts[] = count($skipped).' pulada(s): '.implode(', ', array_keys($skipped));
+        }
+        $parts[] = "vistos {$totalSeen}, gravados {$totalUpserted}";
+
+        $log->update([
+            'status' => $status,
+            'totals' => $totals,
+            'orders_seen' => $totalSeen,
+            'orders_upserted' => $totalUpserted,
+            'finished_at' => now(),
+            'message' => implode(' · ', $parts),
+        ]);
 
         return $log;
     }
