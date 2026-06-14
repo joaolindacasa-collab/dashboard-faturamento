@@ -15,8 +15,7 @@ Artisan::command('inspire', function () {
 */
 Schedule::command('tiny:sync --mode=incremental')
     ->everyFiveMinutes()
-    ->between('8:00', '22:00')
-    ->days([1, 2, 3, 4, 5, 6]) // seg a sáb
+    ->between('8:00', '22:00')   // todos os dias (inclui domingo); marketplaces vendem 7 dias
     ->withoutOverlapping()
     ->onOneServer() // evita rodar em todas as réplicas no Laravel Cloud
     ->timezone(config('tiny.timezone', 'America/Sao_Paulo'));

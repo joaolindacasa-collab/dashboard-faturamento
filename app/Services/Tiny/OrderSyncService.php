@@ -26,7 +26,7 @@ class OrderSyncService
      * pedidos desses meses que não voltaram (status mudou pra fora do filtro,
      * ex.: cancelado). incremental: só os últimos N dias.
      */
-    public function sync(string $mode = 'incremental', ?callable $onProgress = null, ?array $onlyCompanies = null): SyncLog
+    public function sync(string $mode = 'incremental', ?callable $onProgress = null, ?array $onlyCompanies = null, ?string $month = null, ?string $from = null, ?string $to = null): SyncLog
     {
         $tz = config('tiny.timezone', 'America/Sao_Paulo');
         $now = Carbon::now($tz);
@@ -55,7 +55,7 @@ class OrderSyncService
         // ela é PULADA (logada) e o sync continua com as demais.
         foreach ($slugs as $slug) {
             try {
-                [$days, $isFullScope] = $this->daysToFetch($mode, $now);
+                [$days, $isFullScope] = $this->daysToFetch($mode, $now, $month, $from, $to);
 
                 $access = $this->client->accessTokenFor($slug);
 
@@ -146,8 +146,30 @@ class OrderSyncService
     /**
      * @return array{0: CarbonPeriod|array, 1: bool} lista de dias e se é "full scope"
      */
-    private function daysToFetch(string $mode, Carbon $now): array
+    private function daysToFetch(string $mode, Carbon $now, ?string $month = null, ?string $from = null, ?string $to = null): array
     {
+        // --from/--to: intervalo de datas arbitrário (backfill fatiado). Não faz
+        // stale-delete (é parcial), só faz upsert dos pedidos do intervalo.
+        if ($from && $to) {
+            $start = Carbon::createFromFormat('Y-m-d', $from, $now->getTimezone())->startOfDay();
+            $end = Carbon::createFromFormat('Y-m-d', $to, $now->getTimezone())->startOfDay();
+            if ($end->greaterThan($now)) {
+                $end = $now->copy();
+            }
+            return [CarbonPeriod::create($start, '1 day', $end), false];
+        }
+
+        // --month=YYYY-MM: re-puxa só aquele mês (full scope), até hoje se for o
+        // mês corrente. Útil pra backfill sem estourar o limite de tempo.
+        if ($month) {
+            $start = Carbon::createFromFormat('Y-m-d', $month.'-01', $now->getTimezone())->startOfMonth();
+            $end = $start->copy()->endOfMonth();
+            if ($end->greaterThan($now)) {
+                $end = $now->copy();
+            }
+            return [CarbonPeriod::create($start, '1 day', $end), true];
+        }
+
         if ($mode === 'full') {
             $start = $now->copy()->subMonthNoOverflow()->startOfMonth();
             $end = $now->copy()->endOfMonth();
