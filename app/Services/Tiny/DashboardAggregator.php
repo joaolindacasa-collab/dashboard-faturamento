@@ -18,13 +18,12 @@ class DashboardAggregator
         return config('tiny.timezone', 'America/Sao_Paulo');
     }
 
-    /** Meses com dados (YYYY-MM) + atual e anterior, desc. */
+    /** Meses com dados (YYYY-MM) + atual e anterior, desc. Portável (MySQL/Postgres). */
     public function availableMonths(): array
     {
         $now = Carbon::now($this->timezone());
-        $months = Order::query()
-            ->selectRaw("DATE_FORMAT(order_date, '%Y-%m') as ym")
-            ->distinct()->pluck('ym')->filter()->all();
+        $months = Order::query()->distinct()->orderBy('order_date')->pluck('order_date')
+            ->map(fn ($d) => Carbon::parse($d)->format('Y-m'))->all();
 
         $months[] = $now->format('Y-m');
         $months[] = $now->copy()->subMonthNoOverflow()->format('Y-m');
@@ -74,10 +73,21 @@ class DashboardAggregator
         $companiesCfg = config('tiny.companies', []);
         $slugs = array_keys($companiesCfg);
 
+        // ---- limites de datas (portável: MySQL e Postgres, sem DATE_FORMAT/DAYOFMONTH) ----
+        $curStart = $monthStart->toDateString();
+        $curEnd = $isCurrent ? $now->toDateString() : $monthStart->copy()->endOfMonth()->toDateString();
+
+        $prevStart = $monthStart->copy()->subMonthNoOverflow()->startOfMonth();
+        $prevMonthEnd = $prevStart->copy()->endOfMonth();
+        $prevPerEnd = $prevStart->copy()->addDays($periodDays - 1);
+        if ($prevPerEnd->greaterThan($prevMonthEnd)) {
+            $prevPerEnd = $prevMonthEnd;
+        }
+
         // ---- agregados crus ----
-        $cur = $this->grouped($monthKey, null, $unknown);          // mês atual completo (até hoje)
-        $prevPer = $this->grouped($prevKey, $periodDays, $unknown); // mês anterior, mesmo período
-        $prevFullTotal = (float) Order::whereRaw("DATE_FORMAT(order_date,'%Y-%m')=?", [$prevKey])->sum('value');
+        $cur = $this->grouped($curStart, $curEnd, $unknown);                              // mês selecionado (até hoje, se atual)
+        $prevPer = $this->grouped($prevStart->toDateString(), $prevPerEnd->toDateString(), $unknown); // mês anterior, mesmo período
+        $prevFullTotal = (float) Order::whereBetween('order_date', [$prevStart->toDateString(), $prevMonthEnd->toDateString()])->sum('value');
 
         // índices
         $coTotal = array_fill_keys($slugs, 0.0);
@@ -214,19 +224,16 @@ class DashboardAggregator
     }
 
     /**
-     * Agrupa pedidos por (company, channel) num mês, opcionalmente limitando
-     * aos primeiros N dias (pra comparação no mesmo período).
+     * Agrupa pedidos por (company, channel) num intervalo de datas [start, end]
+     * (inclusivo). Portável entre MySQL e Postgres: usa whereBetween + COALESCE/
+     * NULLIF (SQL padrão), sem funções específicas de data.
      */
-    private function grouped(string $monthKey, ?int $maxDay, string $unknown)
+    private function grouped(string $startDate, string $endDate, string $unknown)
     {
-        $q = Order::query()
-            ->selectRaw('company, COALESCE(NULLIF(channel, ""), ?) as ch, SUM(value) as v, COUNT(*) as c', [$unknown])
-            ->whereRaw("DATE_FORMAT(order_date, '%Y-%m') = ?", [$monthKey]);
-
-        if ($maxDay !== null) {
-            $q->whereRaw('DAYOFMONTH(order_date) <= ?', [$maxDay]);
-        }
-
-        return $q->groupBy('company', 'ch')->get();
+        return Order::query()
+            ->selectRaw('company, COALESCE(NULLIF(channel, ?), ?) as ch, SUM(value) as v, COUNT(*) as c', ['', $unknown])
+            ->whereBetween('order_date', [$startDate, $endDate])
+            ->groupBy('company', 'ch')
+            ->get();
     }
 }
