@@ -96,4 +96,18 @@ return [
         'shopify' => 'Yampi',
         'woocommerce' => 'Yampi',
     ],
+
+    /*
+    | Alerta de sync parado: e-mail se não houver sync OK há mais de
+    | `max_age_hours`. O comando `tiny:sync-alert` roda só na janela ativa
+    | (9h-22h), então não dispara à noite quando o incremental naturalmente
+    | não roda. `cooldown_hours` evita reenvio durante uma queda prolongada.
+    | Sem `email` definido, cai nos usuários admin.
+    */
+    'alert' => [
+        'enabled'        => filter_var(env('TINY_ALERT_ENABLED', true), FILTER_VALIDATE_BOOL),
+        'email'          => env('TINY_ALERT_EMAIL'),
+        'max_age_hours'  => (int) env('TINY_ALERT_MAX_AGE_HOURS', 2),
+        'cooldown_hours' => (int) env('TINY_ALERT_COOLDOWN_HOURS', 6),
+    ],
 ];

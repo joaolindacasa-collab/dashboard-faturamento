@@ -38,3 +38,15 @@ Schedule::command("tiny:sync --month={$mesCorrente}")
     ->withoutOverlapping()
     ->onOneServer()
     ->timezone(config('tiny.timezone', 'America/Sao_Paulo'));
+
+/*
+| Alerta de sync parado: 1x/hora na janela ativa (9h-22h). Fora dela o
+| incremental não roda, então a base "envelhecer" é esperado — checar de noite
+| geraria falso positivo. O command tem cooldown próprio anti-spam.
+*/
+Schedule::command('tiny:sync-alert')
+    ->hourly()
+    ->between('9:00', '22:00')
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->timezone(config('tiny.timezone', 'America/Sao_Paulo'));
