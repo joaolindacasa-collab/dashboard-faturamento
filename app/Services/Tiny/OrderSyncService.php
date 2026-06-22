@@ -201,11 +201,7 @@ class OrderSyncService
             return null;
         }
 
-        $rawValor = $this->pick($p, ['valor', 'valorTotal', 'total']) ?? 0;
-        if (is_string($rawValor)) {
-            $rawValor = (float) str_replace(',', '.', $rawValor);
-        }
-        $value = round((float) $rawValor, 2);
+        $value = $this->parseMoney($this->pick($p, ['valor', 'valorTotal', 'total']));
 
         $situacao = $p['situacao'] ?? null;
         if (is_array($situacao)) {
@@ -241,6 +237,47 @@ class OrderSyncService
             }
         }
         return null;
+    }
+
+    /**
+     * Normaliza o valor monetário do pedido, vindo do Tiny v3 em formatos
+     * variados. Lida com número (1234.56), string US ("1234.56" / "1,234.56")
+     * e string BR ("1234,56" / "1.234,56"). Regra: quando há os dois
+     * separadores, o que estiver mais à direita é o decimal.
+     */
+    private function parseMoney($raw): float
+    {
+        if ($raw === null || $raw === '') {
+            return 0.0;
+        }
+        if (is_int($raw) || is_float($raw)) {
+            return round((float) $raw, 2);
+        }
+
+        $s = preg_replace('/[^0-9.,\-]/', '', (string) $raw);
+        if ($s === '' || $s === '-') {
+            return 0.0;
+        }
+
+        $lastComma = strrpos($s, ',');
+        $lastDot = strrpos($s, '.');
+
+        if ($lastComma !== false && $lastDot !== false) {
+            if ($lastComma > $lastDot) {
+                // BR: ponto = milhar, vírgula = decimal -> "1.234,56"
+                $s = str_replace('.', '', $s);
+                $s = str_replace(',', '.', $s);
+            } else {
+                // US: vírgula = milhar, ponto = decimal -> "1,234.56"
+                $s = str_replace(',', '', $s);
+            }
+        } elseif ($lastComma !== false) {
+            // só vírgula -> decimal BR ("1234,56")
+            $s = str_replace(',', '.', $s);
+        }
+        // só ponto, ou sem separador: já é decimal/inteiro padrão.
+
+        return round((float) $s, 2);
     }
 
     private function normalizeDate($raw): ?string
