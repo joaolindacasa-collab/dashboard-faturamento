@@ -127,13 +127,14 @@
 
             {{-- HOJE VS ONTEM --}}
             <div class="panel rounded-xl p-4">
-                <div class="text-[11px] lbl uppercase text-gray-500 mb-3">Hoje vs. ontem</div>
+                <div class="text-[11px] lbl uppercase text-gray-500 mb-1">Hoje vs. ontem</div>
+                <div class="text-[10px] text-gray-600 mb-3">Ontem proporcional ao horário (~{{ $d['hoje_vs_ontem']['day_pct'] }}% do dia, até {{ $d['hoje_vs_ontem']['time_now'] }})</div>
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="text-[11px] uppercase text-gray-500 border-b border-[#1e2235]">
                             <th class="text-left font-medium py-1.5">Empresa</th>
                             <th class="text-right font-medium">Hoje ({{ $d['hoje_vs_ontem']['date_today'] }})</th>
-                            <th class="text-right font-medium">Ontem ({{ $d['hoje_vs_ontem']['date_yest'] }})</th>
+                            <th class="text-right font-medium">Ontem (até {{ $d['hoje_vs_ontem']['time_now'] }})</th>
                             <th class="text-right font-medium">Δ</th>
                         </tr>
                     </thead>

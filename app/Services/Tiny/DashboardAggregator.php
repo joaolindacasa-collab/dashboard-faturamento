@@ -185,15 +185,30 @@ class DashboardAggregator
             $matrix[] = $row;
         }
 
-        // ---- hoje vs ontem (datas reais) ----
+        // ---- hoje vs ontem (ontem proporcional ao horário atual) ----
+        // order_date guarda só a DATA (sem hora) — o /pedidos do Tiny v3 é por
+        // dia e o normalizeDate corta em YYYY-MM-DD. Então não dá pra recortar
+        // ontem pela hora real. Comparar dia parcial (hoje) com dia inteiro
+        // (ontem) enviesa tudo pra baixo; em vez disso escalamos o total de
+        // ontem pela fração do dia já decorrida. Pressupõe vendas ~uniformes ao
+        // longo do dia (aproximação, mas muito mais justa que parcial×inteiro).
         $today = $now->copy()->startOfDay();
         $yest = $now->copy()->subDay()->startOfDay();
+        $dayFraction = min(1.0, max(0.0, ($now->timestamp - $today->timestamp) / 86400)); // segundos desde a meia-noite local / dia inteiro
         $todayBy = Order::selectRaw('company, SUM(value) v')->whereDate('order_date', $today->toDateString())->groupBy('company')->pluck('v', 'company');
         $yestBy = Order::selectRaw('company, SUM(value) v')->whereDate('order_date', $yest->toDateString())->groupBy('company')->pluck('v', 'company');
-        $hojeVsOntem = ['date_today' => $today->format('d/m'), 'date_yest' => $yest->format('d/m'), 'rows' => [], 'total' => []];
+        $hojeVsOntem = [
+            'date_today' => $today->format('d/m'),
+            'date_yest'  => $yest->format('d/m'),
+            'time_now'   => $now->format('H:i'),
+            'day_pct'    => (int) round($dayFraction * 100),
+            'rows'       => [],
+            'total'      => [],
+        ];
         $tHoje = 0.0; $tOntem = 0.0;
         foreach ($slugs as $slug) {
-            $h = (float) ($todayBy[$slug] ?? 0); $o = (float) ($yestBy[$slug] ?? 0);
+            $h = (float) ($todayBy[$slug] ?? 0);
+            $o = (float) ($yestBy[$slug] ?? 0) * $dayFraction; // ontem proporcional ao horário
             $tHoje += $h; $tOntem += $o;
             $hojeVsOntem['rows'][] = [
                 'name' => $companiesCfg[$slug]['name'],
