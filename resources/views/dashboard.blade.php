@@ -219,8 +219,8 @@
         <section class="panel rounded-xl p-4">
             <div class="flex flex-wrap items-center gap-x-4 mb-3">
                 <span class="text-[11px] lbl uppercase text-gray-500">Empresa × Canal — Faturamento em {{ $d['month_short'] }}</span>
-                <span class="text-[11px] text-gray-600">↕ % do canal na empresa</span>
-                <span class="text-[11px] text-gray-600">↔ % da empresa no canal</span>
+                <span class="text-xs text-sky-400">↕ % do canal na empresa</span>
+                <span class="text-xs text-amber-400">↔ % da empresa no canal</span>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
@@ -241,15 +241,15 @@
                                     @php $c = $row['cells'][$co['slug']]; @endphp
                                     <td class="text-right py-2.5">
                                         <div class="text-gray-200">{{ $money($c['value']) }}</div>
-                                        <div class="text-[11px] text-gray-600">
-                                            ↕ {{ number_format($c['pct_na_empresa'], 1, ',', '.') }}%
-                                            <span class="ml-1">↔ {{ number_format($c['pct_no_canal'], 1, ',', '.') }}%</span>
+                                        <div class="text-xs">
+                                            <span class="text-sky-400">↕ {{ number_format($c['pct_na_empresa'], 1, ',', '.') }}%</span>
+                                            <span class="ml-1.5 text-amber-400">↔ {{ number_format($c['pct_no_canal'], 1, ',', '.') }}%</span>
                                         </div>
                                     </td>
                                 @endforeach
                                 <td class="text-right py-2.5">
                                     <div class="text-white font-medium">{{ $money($row['total']) }}</div>
-                                    <div class="text-[11px] text-gray-600">↕ {{ number_format($row['pct_total'], 1, ',', '.') }}% do total</div>
+                                    <div class="text-xs text-sky-400">↕ {{ number_format($row['pct_total'], 1, ',', '.') }}% do total</div>
                                 </td>
                             </tr>
                         @empty
