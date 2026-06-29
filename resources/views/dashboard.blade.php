@@ -96,7 +96,7 @@
         </header>
 
         {{-- ============ KPIs ============ --}}
-        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             @php
                 $k = $d['kpis'];
             @endphp
@@ -115,45 +115,40 @@
                 <div class="text-3xl font-bold text-white mt-1">{{ $money($k['ticket']['value']) }}</div>
                 <div class="text-xs text-gray-500 mt-1">Mês anterior: {{ $money($k['ticket']['prev']) }} {!! $delta($k['ticket']['delta']) !!}</div>
             </div>
-            <div class="panel rounded-xl p-4">
-                <div class="text-[11px] lbl uppercase text-gray-500">Projeção do mês</div>
-                <div class="text-3xl font-bold text-white mt-1">{{ $money($k['projecao']['value']) }}</div>
-                <div class="text-xs text-gray-500 mt-1">Com base no ritmo diário atual · {!! $delta($k['projecao']['delta']) !!} vs. {{ $d['prev_short'] }}</div>
-            </div>
         </section>
 
         {{-- ============ 3 PAINÉIS ============ --}}
         <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-            {{-- HOJE VS ONTEM --}}
+            {{-- PROJEÇÃO DO MÊS --}}
             <div class="panel rounded-xl p-4">
-                <div class="text-[11px] lbl uppercase text-gray-500 mb-1">Hoje vs. ontem</div>
-                <div class="text-[10px] text-gray-600 mb-3">Ontem proporcional ao horário (~{{ $d['hoje_vs_ontem']['day_pct'] }}% do dia, até {{ $d['hoje_vs_ontem']['time_now'] }})</div>
+                <div class="text-[11px] lbl uppercase text-gray-500 mb-1">Projeção do mês</div>
+                <div class="text-[10px] text-gray-600 mb-3">Com base no ritmo diário atual · Δ vs. {{ $d['prev_short'] }} (mês inteiro)</div>
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="text-[11px] uppercase text-gray-500 border-b border-[#1e2235]">
                             <th class="text-left font-medium py-1.5">Empresa</th>
-                            <th class="text-right font-medium">Hoje ({{ $d['hoje_vs_ontem']['date_today'] }})</th>
-                            <th class="text-right font-medium">Ontem (até {{ $d['hoje_vs_ontem']['time_now'] }})</th>
+                            <th class="text-right font-medium">Atual</th>
+                            <th class="text-right font-medium">Projeção</th>
                             <th class="text-right font-medium">Δ</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach ($d['hoje_vs_ontem']['rows'] as $r)
+                        @foreach ($d['projecao_mes']['rows'] as $r)
                             <tr class="border-b border-[#161a2c]">
                                 <td class="py-2 flex items-center gap-2">
                                     <span class="h-2 w-2 rounded-full" style="background: {{ $r['color'] }}"></span>{{ $r['name'] }}
                                 </td>
-                                <td class="text-right text-gray-200">{{ $money($r['hoje']) }}</td>
-                                <td class="text-right text-gray-400">{{ $money($r['ontem']) }}</td>
+                                <td class="text-right text-gray-400">{{ $money($r['atual']) }}</td>
+                                <td class="text-right text-gray-200">{{ $money($r['projecao']) }}</td>
                                 <td class="text-right">{!! $delta($r['delta']) !!}</td>
                             </tr>
                         @endforeach
                         <tr class="font-semibold">
                             <td class="py-2 text-gray-400 uppercase text-xs">Total</td>
-                            <td class="text-right text-white">{{ $money($d['hoje_vs_ontem']['total']['hoje']) }}</td>
-                            <td class="text-right text-gray-300">{{ $money($d['hoje_vs_ontem']['total']['ontem']) }}</td>
-                            <td class="text-right">{!! $delta($d['hoje_vs_ontem']['total']['delta']) !!}</td>
+                            <td class="text-right text-gray-300">{{ $money($d['projecao_mes']['total']['atual']) }}</td>
+                            <td class="text-right text-white">{{ $money($d['projecao_mes']['total']['projecao']) }}</td>
+                            <td class="text-right">{!! $delta($d['projecao_mes']['total']['delta']) !!}</td>
                         </tr>
                     </tbody>
                 </table>
