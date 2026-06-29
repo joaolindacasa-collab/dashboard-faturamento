@@ -89,16 +89,19 @@ class DashboardProjecaoTest extends TestCase
         // linda: proj 3000 vs maio 3000 => delta 0.0.
         $this->assertSame(950.0, $rows['linda']['atual']);
         $this->assertSame(3000.0, $rows['linda']['projecao']);
+        $this->assertSame(3000.0, $rows['linda']['mes_anterior']);
         $this->assertSame(0.0, $rows['linda']['delta']);
 
         // bella: proj 6000 vs maio 0 => delta null (sem base de comparação).
         $this->assertSame(1900.0, $rows['bella']['atual']);
         $this->assertSame(6000.0, $rows['bella']['projecao']);
+        $this->assertSame(0.0, $rows['bella']['mes_anterior']);
         $this->assertNull($rows['bella']['delta']);
 
         // Total: atual 2850, proj 9000, vs maio 3000 => delta 200%.
         $this->assertSame(2850.0, $d['projecao_mes']['total']['atual']);
         $this->assertSame(9000.0, $d['projecao_mes']['total']['projecao']);
+        $this->assertSame(3000.0, $d['projecao_mes']['total']['mes_anterior']);
         $this->assertSame(200.0, $d['projecao_mes']['total']['delta']);
     }
 }

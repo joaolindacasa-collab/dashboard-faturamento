@@ -130,6 +130,7 @@
                             <th class="text-left font-medium py-1.5">Empresa</th>
                             <th class="text-right font-medium">Atual</th>
                             <th class="text-right font-medium">Projeção</th>
+                            <th class="text-right font-medium">{{ $d['prev_short'] }}</th>
                             <th class="text-right font-medium">Δ</th>
                         </tr>
                     </thead>
@@ -141,6 +142,7 @@
                                 </td>
                                 <td class="text-right text-gray-400">{{ $money($r['atual']) }}</td>
                                 <td class="text-right text-gray-200">{{ $money($r['projecao']) }}</td>
+                                <td class="text-right text-gray-500">{{ $money($r['mes_anterior']) }}</td>
                                 <td class="text-right">{!! $delta($r['delta']) !!}</td>
                             </tr>
                         @endforeach
@@ -148,6 +150,7 @@
                             <td class="py-2 text-gray-400 uppercase text-xs">Total</td>
                             <td class="text-right text-gray-300">{{ $money($d['projecao_mes']['total']['atual']) }}</td>
                             <td class="text-right text-white">{{ $money($d['projecao_mes']['total']['projecao']) }}</td>
+                            <td class="text-right text-gray-400">{{ $money($d['projecao_mes']['total']['mes_anterior']) }}</td>
                             <td class="text-right">{!! $delta($d['projecao_mes']['total']['delta']) !!}</td>
                         </tr>
                     </tbody>

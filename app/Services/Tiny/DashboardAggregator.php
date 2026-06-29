@@ -150,20 +150,22 @@ class DashboardAggregator
             $atual = $coTotal[$slug];
             $proj = $projDiv($atual);
             $projRows[] = [
-                'slug'     => $slug,
-                'name'     => $companiesCfg[$slug]['name'],
-                'color'    => $companiesCfg[$slug]['color'] ?? '#7c5cff',
-                'atual'    => round($atual, 2),
-                'projecao' => round($proj, 2),
-                'delta'    => $this->pct($proj, $coPrevFull[$slug] ?? 0),
+                'slug'         => $slug,
+                'name'         => $companiesCfg[$slug]['name'],
+                'color'        => $companiesCfg[$slug]['color'] ?? '#7c5cff',
+                'atual'        => round($atual, 2),
+                'projecao'     => round($proj, 2),
+                'mes_anterior' => round($coPrevFull[$slug] ?? 0, 2),
+                'delta'        => $this->pct($proj, $coPrevFull[$slug] ?? 0),
             ];
         }
         $projecaoMes = [
             'rows'  => $projRows,
             'total' => [
-                'atual'    => round($grand, 2),
-                'projecao' => round($projection, 2),
-                'delta'    => $this->pct($projection, $prevFullTotal),
+                'atual'        => round($grand, 2),
+                'projecao'     => round($projection, 2),
+                'mes_anterior' => round($prevFullTotal, 2),
+                'delta'        => $this->pct($projection, $prevFullTotal),
             ],
         ];
 
