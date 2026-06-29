@@ -158,44 +158,79 @@
                     </table>
                 </div>
 
-                {{-- gráfico de barras empilhadas: faturamento por dia, empilhado por empresa --}}
+                {{-- gráfico de barras empilhadas: faturamento por dia, empilhado por empresa (maior na base) --}}
                 <div class="lg:col-span-3">
+                    @php
+                        $fd = $d['faturamento_diario'];
+                        $axisMax = $fd['axis_max'] > 0 ? $fd['axis_max'] : 1;
+                        $cos = $fd['companies_ordered'];   // maior faturamento primeiro
+                        $chartH = 256;                     // px, casa com h-64
+                    @endphp
                     <div class="flex items-center justify-between mb-2 gap-3 flex-wrap">
                         <span class="text-[11px] uppercase text-gray-500">Faturamento por dia</span>
                         <div class="flex flex-wrap gap-3 text-[11px] text-gray-400">
-                            @foreach ($d['companies'] as $co)
+                            @foreach ($cos as $co)
                                 <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-sm" style="background: {{ $co['color'] }}"></span>{{ $co['name'] }}</span>
                             @endforeach
                         </div>
                     </div>
 
-                    @php $fd = $d['faturamento_diario']; $fdMax = $fd['max'] > 0 ? $fd['max'] : 1; @endphp
-                    <div class="flex items-end gap-px h-52">
-                        @foreach ($fd['days'] as $day)
-                            @php
-                                $barPct = $day['total'] / $fdMax * 100;
-                                $tip = 'Dia ' . $day['dia'] . ' · ' . $money($day['total']);
-                                foreach ($d['companies'] as $co) {
-                                    $vv = $day['values'][$co['slug']] ?? 0;
-                                    if ($vv > 0) { $tip .= ' · ' . $co['name'] . ' ' . $money($vv); }
-                                }
-                            @endphp
-                            <div class="flex-1 flex flex-col justify-end h-full hover:opacity-80 transition-opacity" title="{{ $tip }}">
-                                <div class="flex flex-col-reverse rounded-t-sm overflow-hidden" style="height: {{ $barPct }}%">
-                                    @foreach ($d['companies'] as $co)
-                                        @php $v = $day['values'][$co['slug']] ?? 0; $segPct = $day['total'] > 0 ? $v / $day['total'] * 100 : 0; @endphp
-                                        @if ($v > 0)
-                                            <div style="height: {{ $segPct }}%; background: {{ $co['color'] }}"></div>
-                                        @endif
+                    <div class="flex gap-2">
+                        {{-- eixo Y (escala de 50 em 50 mil) --}}
+                        <div class="relative w-9 shrink-0 h-64 text-[9px] text-gray-500">
+                            @for ($g = 0; $g <= $axisMax; $g += $fd['step'])
+                                <div class="absolute right-0 -translate-y-1/2 pr-1 whitespace-nowrap" style="bottom: {{ $g / $axisMax * 100 }}%">{{ $g === 0 ? '0' : $int($g / 1000) . 'k' }}</div>
+                            @endfor
+                        </div>
+
+                        <div class="flex-1">
+                            <div class="relative h-64">
+                                {{-- linhas de grade --}}
+                                @for ($g = 0; $g <= $axisMax; $g += $fd['step'])
+                                    <div class="absolute left-0 right-0 border-t border-[#1a1e30]" style="bottom: {{ $g / $axisMax * 100 }}%"></div>
+                                @endfor
+                                {{-- barras --}}
+                                <div class="absolute inset-0 flex items-end gap-px">
+                                    @foreach ($fd['days'] as $day)
+                                        @php
+                                            $barPct = $day['total'] / $axisMax * 100;
+                                            $tip = 'Dia ' . $day['dia'] . ' · ' . $money($day['total']);
+                                            foreach ($cos as $co) {
+                                                $vv = $day['values'][$co['slug']] ?? 0;
+                                                if ($vv > 0) {
+                                                    $pp = $day['total'] > 0 ? round($vv / $day['total'] * 100) : 0;
+                                                    $tip .= ' · ' . $co['name'] . ' ' . $money($vv) . ' (' . $pp . '%)';
+                                                }
+                                            }
+                                        @endphp
+                                        <div class="flex-1 flex flex-col justify-end h-full hover:opacity-90 transition-opacity" title="{{ $tip }}">
+                                            <div class="flex flex-col-reverse rounded-t-sm overflow-hidden" style="height: {{ $barPct }}%">
+                                                @foreach ($cos as $co)
+                                                    @php
+                                                        $v = $day['values'][$co['slug']] ?? 0;
+                                                        $segPct = $day['total'] > 0 ? $v / $day['total'] * 100 : 0;
+                                                        $segPx = $segPct / 100 * $barPct / 100 * $chartH;  // altura aprox. do bloco em px
+                                                    @endphp
+                                                    @if ($v > 0)
+                                                        <div class="flex items-center justify-center overflow-hidden" style="height: {{ $segPct }}%; background: {{ $co['color'] }}">
+                                                            @if ($segPx >= 13)
+                                                                <span class="text-[9px] font-semibold leading-none text-white" style="text-shadow:0 1px 2px rgba(0,0,0,.55)">{{ number_format($segPct, 0) }}%</span>
+                                                            @endif
+                                                        </div>
+                                                    @endif
+                                                @endforeach
+                                            </div>
+                                        </div>
                                     @endforeach
                                 </div>
                             </div>
-                        @endforeach
-                    </div>
-                    <div class="flex gap-px mt-1">
-                        @foreach ($fd['days'] as $day)
-                            <div class="flex-1 text-center text-[9px] text-gray-600">{{ ($day['dia'] % 5 === 0 || $day['dia'] === 1) ? $day['dia'] : '' }}</div>
-                        @endforeach
+                            {{-- eixo X: todo dia rotulado --}}
+                            <div class="flex gap-px mt-1">
+                                @foreach ($fd['days'] as $day)
+                                    <div class="flex-1 text-center text-[8px] text-gray-500 tabular-nums">{{ $day['dia'] }}</div>
+                                @endforeach
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

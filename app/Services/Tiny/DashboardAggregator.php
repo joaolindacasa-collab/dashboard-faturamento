@@ -254,7 +254,22 @@ class DashboardAggregator
             $serieMax = max($serieMax, $tot);
             $serieDias[] = ['dia' => $dia, 'date' => $dateStr, 'values' => $vals, 'total' => round($tot, 2)];
         }
-        $faturamentoDiario = ['days' => $serieDias, 'max' => round($serieMax, 2)];
+        // empresas ordenadas pelo faturamento do mês (maior primeiro = base da pilha, colada no eixo X)
+        $ordered = $slugs;
+        usort($ordered, fn ($a, $b) => ($coTotal[$b] ?? 0) <=> ($coTotal[$a] ?? 0));
+        $companiesOrdered = array_map(fn ($s) => [
+            'slug' => $s, 'name' => $companiesCfg[$s]['name'], 'color' => $companiesCfg[$s]['color'] ?? '#7c5cff',
+        ], $ordered);
+        // escala do eixo Y arredondada pra cima no passo de 50 mil
+        $step = 50000;
+        $axisMax = $serieMax > 0 ? (int) (ceil($serieMax / $step) * $step) : $step;
+        $faturamentoDiario = [
+            'days'              => $serieDias,
+            'max'               => round($serieMax, 2),
+            'axis_max'          => $axisMax,
+            'step'              => $step,
+            'companies_ordered' => $companiesOrdered,
+        ];
 
         return [
             'month'         => $monthKey,
