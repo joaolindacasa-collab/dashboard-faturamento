@@ -124,6 +124,11 @@ class DashboardProjecaoTest extends TestCase
         $this->assertCount(10, $fd['days']);
         // Maior dia = 300 (dias completos: linda 100 + bella 200).
         $this->assertSame(300.0, $fd['max']);
+        // Escala do eixo arredonda pra cima no passo de 50 mil.
+        $this->assertSame(50000, $fd['axis_max']);
+        // Ordem da pilha: maior faturamento do mês primeiro (bella 1900 > linda 950).
+        $this->assertSame('bella', $fd['companies_ordered'][0]['slug']);
+        $this->assertSame('linda', $fd['companies_ordered'][1]['slug']);
 
         $dia1 = collect($fd['days'])->firstWhere('dia', 1);
         $this->assertSame(100.0, $dia1['values']['linda']);
