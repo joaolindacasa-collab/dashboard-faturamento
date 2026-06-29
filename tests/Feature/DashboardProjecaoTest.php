@@ -104,4 +104,35 @@ class DashboardProjecaoTest extends TestCase
         $this->assertSame(3000.0, $d['projecao_mes']['total']['mes_anterior']);
         $this->assertSame(200.0, $d['projecao_mes']['total']['delta']);
     }
+
+    public function test_serie_diaria_empilha_por_empresa(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 6, 10, 12, 0, 0, 'America/Sao_Paulo'));
+
+        // linda: 100/dia (01..09) + 50 no dia 10; bella: 200/dia (01..09) + 100 no dia 10.
+        for ($dia = 1; $dia <= 9; $dia++) {
+            $this->mkOrder('linda', 'l'.$dia, sprintf('2026-06-%02d', $dia), 100);
+            $this->mkOrder('bella', 'b'.$dia, sprintf('2026-06-%02d', $dia), 200);
+        }
+        $this->mkOrder('linda', 'lhoje', '2026-06-10', 50);
+        $this->mkOrder('bella', 'bhoje', '2026-06-10', 100);
+
+        $d = (new DashboardAggregator())->forMonth('2026-06');
+        $fd = $d['faturamento_diario'];
+
+        // Mês atual: vai do dia 1 ao dia de hoje (10).
+        $this->assertCount(10, $fd['days']);
+        // Maior dia = 300 (dias completos: linda 100 + bella 200).
+        $this->assertSame(300.0, $fd['max']);
+
+        $dia1 = collect($fd['days'])->firstWhere('dia', 1);
+        $this->assertSame(100.0, $dia1['values']['linda']);
+        $this->assertSame(200.0, $dia1['values']['bella']);
+        $this->assertSame(300.0, $dia1['total']);
+
+        $dia10 = collect($fd['days'])->firstWhere('dia', 10);
+        $this->assertSame(50.0, $dia10['values']['linda']);
+        $this->assertSame(100.0, $dia10['values']['bella']);
+        $this->assertSame(150.0, $dia10['total']);
+    }
 }

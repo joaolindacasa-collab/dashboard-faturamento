@@ -117,45 +117,92 @@
             </div>
         </section>
 
-        {{-- ============ 3 PAINÉIS ============ --}}
-        <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {{-- ============ PROJEÇÃO DO MÊS (largura total) ============ --}}
+        <section class="panel rounded-xl p-4">
+            <div class="text-[11px] lbl uppercase text-gray-500 mb-1">Projeção do mês</div>
+            <div class="text-[10px] text-gray-600 mb-4">Com base no ritmo diário atual · Δ vs. {{ $d['prev_short'] }} (mês inteiro)</div>
 
-            {{-- PROJEÇÃO DO MÊS --}}
-            <div class="panel rounded-xl p-4">
-                <div class="text-[11px] lbl uppercase text-gray-500 mb-1">Projeção do mês</div>
-                <div class="text-[10px] text-gray-600 mb-3">Com base no ritmo diário atual · Δ vs. {{ $d['prev_short'] }} (mês inteiro)</div>
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="text-[11px] uppercase text-gray-500 border-b border-[#1e2235]">
-                            <th class="text-left font-medium py-1.5">Empresa</th>
-                            <th class="text-right font-medium">Atual</th>
-                            <th class="text-right font-medium">Projeção</th>
-                            <th class="text-right font-medium">{{ $d['prev_short'] }}</th>
-                            <th class="text-right font-medium">Δ</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($d['projecao_mes']['rows'] as $r)
-                            <tr class="border-b border-[#161a2c]">
-                                <td class="py-2 flex items-center gap-2">
-                                    <span class="h-2 w-2 rounded-full" style="background: {{ $r['color'] }}"></span>{{ $r['name'] }}
-                                </td>
-                                <td class="text-right text-gray-400">{{ $money($r['atual']) }}</td>
-                                <td class="text-right text-gray-200">{{ $money($r['projecao']) }}</td>
-                                <td class="text-right text-gray-500">{{ $money($r['mes_anterior']) }}</td>
-                                <td class="text-right">{!! $delta($r['delta']) !!}</td>
+            <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                {{-- tabela de projeção --}}
+                <div class="lg:col-span-2">
+                    <table class="w-full text-sm whitespace-nowrap">
+                        <thead>
+                            <tr class="text-[11px] uppercase text-gray-500 border-b border-[#1e2235]">
+                                <th class="text-left font-medium py-1.5">Empresa</th>
+                                <th class="text-right font-medium pl-3">Atual</th>
+                                <th class="text-right font-medium pl-3">Projeção</th>
+                                <th class="text-right font-medium pl-3">{{ $d['prev_short'] }}</th>
+                                <th class="text-right font-medium pl-3">Δ</th>
                             </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($d['projecao_mes']['rows'] as $r)
+                                <tr class="border-b border-[#161a2c]">
+                                    <td class="py-2 flex items-center gap-2">
+                                        <span class="h-2 w-2 rounded-full" style="background: {{ $r['color'] }}"></span>{{ $r['name'] }}
+                                    </td>
+                                    <td class="text-right text-gray-400 pl-3">{{ $money($r['atual']) }}</td>
+                                    <td class="text-right text-gray-200 pl-3">{{ $money($r['projecao']) }}</td>
+                                    <td class="text-right text-gray-500 pl-3">{{ $money($r['mes_anterior']) }}</td>
+                                    <td class="text-right pl-3">{!! $delta($r['delta']) !!}</td>
+                                </tr>
+                            @endforeach
+                            <tr class="font-semibold">
+                                <td class="py-2 text-gray-400 uppercase text-xs">Total</td>
+                                <td class="text-right text-gray-300 pl-3">{{ $money($d['projecao_mes']['total']['atual']) }}</td>
+                                <td class="text-right text-white pl-3">{{ $money($d['projecao_mes']['total']['projecao']) }}</td>
+                                <td class="text-right text-gray-400 pl-3">{{ $money($d['projecao_mes']['total']['mes_anterior']) }}</td>
+                                <td class="text-right pl-3">{!! $delta($d['projecao_mes']['total']['delta']) !!}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                {{-- gráfico de barras empilhadas: faturamento por dia, empilhado por empresa --}}
+                <div class="lg:col-span-3">
+                    <div class="flex items-center justify-between mb-2 gap-3 flex-wrap">
+                        <span class="text-[11px] uppercase text-gray-500">Faturamento por dia</span>
+                        <div class="flex flex-wrap gap-3 text-[11px] text-gray-400">
+                            @foreach ($d['companies'] as $co)
+                                <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-sm" style="background: {{ $co['color'] }}"></span>{{ $co['name'] }}</span>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    @php $fd = $d['faturamento_diario']; $fdMax = $fd['max'] > 0 ? $fd['max'] : 1; @endphp
+                    <div class="flex items-end gap-px h-52">
+                        @foreach ($fd['days'] as $day)
+                            @php
+                                $barPct = $day['total'] / $fdMax * 100;
+                                $tip = 'Dia ' . $day['dia'] . ' · ' . $money($day['total']);
+                                foreach ($d['companies'] as $co) {
+                                    $vv = $day['values'][$co['slug']] ?? 0;
+                                    if ($vv > 0) { $tip .= ' · ' . $co['name'] . ' ' . $money($vv); }
+                                }
+                            @endphp
+                            <div class="flex-1 flex flex-col justify-end h-full hover:opacity-80 transition-opacity" title="{{ $tip }}">
+                                <div class="flex flex-col-reverse rounded-t-sm overflow-hidden" style="height: {{ $barPct }}%">
+                                    @foreach ($d['companies'] as $co)
+                                        @php $v = $day['values'][$co['slug']] ?? 0; $segPct = $day['total'] > 0 ? $v / $day['total'] * 100 : 0; @endphp
+                                        @if ($v > 0)
+                                            <div style="height: {{ $segPct }}%; background: {{ $co['color'] }}"></div>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            </div>
                         @endforeach
-                        <tr class="font-semibold">
-                            <td class="py-2 text-gray-400 uppercase text-xs">Total</td>
-                            <td class="text-right text-gray-300">{{ $money($d['projecao_mes']['total']['atual']) }}</td>
-                            <td class="text-right text-white">{{ $money($d['projecao_mes']['total']['projecao']) }}</td>
-                            <td class="text-right text-gray-400">{{ $money($d['projecao_mes']['total']['mes_anterior']) }}</td>
-                            <td class="text-right">{!! $delta($d['projecao_mes']['total']['delta']) !!}</td>
-                        </tr>
-                    </tbody>
-                </table>
+                    </div>
+                    <div class="flex gap-px mt-1">
+                        @foreach ($fd['days'] as $day)
+                            <div class="flex-1 text-center text-[9px] text-gray-600">{{ ($day['dia'] % 5 === 0 || $day['dia'] === 1) ? $day['dia'] : '' }}</div>
+                        @endforeach
+                    </div>
+                </div>
             </div>
+        </section>
+
+        {{-- ============ POR EMPRESA / POR CANAL ============ --}}
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
             {{-- POR EMPRESA --}}
             <div class="panel rounded-xl p-4">
