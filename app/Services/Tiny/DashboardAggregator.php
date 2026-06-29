@@ -229,6 +229,33 @@ class DashboardAggregator
             $matrix[] = $row;
         }
 
+        // ---- série diária por empresa (gráfico de barras empilhadas) ----
+        // Agrupa por (order_date, company). order_date é coluna DATE: agrupar pela
+        // coluna (não por função) é portável entre MySQL e Postgres.
+        $byDay = [];
+        foreach (Order::selectRaw('order_date, company, SUM(value) as v')
+            ->whereBetween('order_date', [$curStart, $curEnd])
+            ->groupBy('order_date', 'company')->get() as $r) {
+            $dateStr = substr((string) $r->order_date, 0, 10);
+            $byDay[$dateStr][$r->company] = (float) $r->v;
+        }
+        $lastDay = $isCurrent ? $daysElapsed : $daysInMonth;
+        $serieDias = [];
+        $serieMax = 0.0;
+        for ($dia = 1; $dia <= $lastDay; $dia++) {
+            $dateStr = $monthStart->copy()->day($dia)->toDateString();
+            $vals = [];
+            $tot = 0.0;
+            foreach ($slugs as $slug) {
+                $v = round($byDay[$dateStr][$slug] ?? 0, 2);
+                $vals[$slug] = $v;
+                $tot += $v;
+            }
+            $serieMax = max($serieMax, $tot);
+            $serieDias[] = ['dia' => $dia, 'date' => $dateStr, 'values' => $vals, 'total' => round($tot, 2)];
+        }
+        $faturamentoDiario = ['days' => $serieDias, 'max' => round($serieMax, 2)];
+
         return [
             'month'         => $monthKey,
             'month_label'   => $this->monthLabel($monthKey),
@@ -243,6 +270,7 @@ class DashboardAggregator
             ], $slugs),
             'kpis'          => $kpis,
             'projecao_mes'  => $projecaoMes,
+            'faturamento_diario' => $faturamentoDiario,
             'por_empresa'   => $porEmpresa,
             'por_canal'     => $porCanal,
             'matrix'        => $matrix,
