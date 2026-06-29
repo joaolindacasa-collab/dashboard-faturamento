@@ -69,6 +69,10 @@ class DashboardAggregator
         $periodDays = $daysElapsed;
         $prevKey = $monthStart->copy()->subMonthNoOverflow()->format('Y-m');
 
+        // Fração do dia de hoje já decorrida (segundos desde a meia-noite / dia).
+        // Reusada na projeção (hoje não conta como dia cheio) e no "hoje vs ontem".
+        $dayFraction = min(1.0, max(0.0, ($now->timestamp - $now->copy()->startOfDay()->timestamp) / 86400));
+
         $unknown = config('tiny.unknown_channel', 'Sem canal');
         $companiesCfg = config('tiny.companies', []);
         $slugs = array_keys($companiesCfg);
@@ -116,7 +120,13 @@ class DashboardAggregator
         // ---- KPIs ----
         $ticket = $grandOrders > 0 ? $grand / $grandOrders : 0;
         $ticketPrev = $grandPrevOrders > 0 ? $grandPrev / $grandPrevOrders : 0;
-        $projection = $daysElapsed > 0 ? $grand / $daysElapsed * $daysInMonth : 0;
+
+        // Projeção: hoje conta PROPORCIONAL ao horário (dias completos + fração
+        // de hoje), senão a média diária fica diluída (hoje como dia cheio) e a
+        // projeção sai baixa. Pressupõe ritmo de vendas ~uniforme no dia — como
+        // os dias completos dominam o denominador, fica estável mesmo de manhã.
+        $effectiveDays = $isCurrent ? (($daysElapsed - 1) + $dayFraction) : $daysElapsed;
+        $projection = $effectiveDays > 0 ? $grand / $effectiveDays * $daysInMonth : 0;
 
         $kpis = [
             'faturamento' => ['value' => $grand, 'prev' => $grandPrev, 'delta' => $this->pct($grand, $grandPrev)],
@@ -190,11 +200,9 @@ class DashboardAggregator
         // dia e o normalizeDate corta em YYYY-MM-DD. Então não dá pra recortar
         // ontem pela hora real. Comparar dia parcial (hoje) com dia inteiro
         // (ontem) enviesa tudo pra baixo; em vez disso escalamos o total de
-        // ontem pela fração do dia já decorrida. Pressupõe vendas ~uniformes ao
-        // longo do dia (aproximação, mas muito mais justa que parcial×inteiro).
+        // ontem pela fração do dia já decorrida ($dayFraction, calculado acima).
         $today = $now->copy()->startOfDay();
         $yest = $now->copy()->subDay()->startOfDay();
-        $dayFraction = min(1.0, max(0.0, ($now->timestamp - $today->timestamp) / 86400)); // segundos desde a meia-noite local / dia inteiro
         $todayBy = Order::selectRaw('company, SUM(value) v')->whereDate('order_date', $today->toDateString())->groupBy('company')->pluck('v', 'company');
         $yestBy = Order::selectRaw('company, SUM(value) v')->whereDate('order_date', $yest->toDateString())->groupBy('company')->pluck('v', 'company');
         $hojeVsOntem = [
