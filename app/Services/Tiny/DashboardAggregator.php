@@ -7,7 +7,7 @@ use Carbon\Carbon;
 
 /**
  * Agrega a tabela `orders` no payload do painel "Live".
- * Reproduz o dashboard Python: KPIs com projeção, hoje vs ontem,
+ * Reproduz o dashboard Python: KPIs com projeção, projeção por empresa,
  * por empresa, por canal e matriz empresa × canal — tudo com delta
  * vs. mês anterior no mesmo período.
  */
@@ -70,7 +70,8 @@ class DashboardAggregator
         $prevKey = $monthStart->copy()->subMonthNoOverflow()->format('Y-m');
 
         // Fração do dia de hoje já decorrida (segundos desde a meia-noite / dia).
-        // Reusada na projeção (hoje não conta como dia cheio) e no "hoje vs ontem".
+        // Usada na projeção pra hoje contar proporcional ao horário, não como
+        // dia cheio (senão a média diária fica diluída e a projeção sai baixa).
         $dayFraction = min(1.0, max(0.0, ($now->timestamp - $now->copy()->startOfDay()->timestamp) / 86400));
 
         $unknown = config('tiny.unknown_channel', 'Sem canal');
@@ -92,6 +93,14 @@ class DashboardAggregator
         $cur = $this->grouped($curStart, $curEnd, $unknown);                              // mês selecionado (até hoje, se atual)
         $prevPer = $this->grouped($prevStart->toDateString(), $prevPerEnd->toDateString(), $unknown); // mês anterior, mesmo período
         $prevFullTotal = (float) Order::whereBetween('order_date', [$prevStart->toDateString(), $prevMonthEnd->toDateString()])->sum('value');
+
+        // total do mês anterior INTEIRO por empresa (base do Δ da projeção).
+        $coPrevFull = array_fill_keys($slugs, 0.0);
+        foreach (Order::selectRaw('company, SUM(value) v')
+            ->whereBetween('order_date', [$prevStart->toDateString(), $prevMonthEnd->toDateString()])
+            ->groupBy('company')->pluck('v', 'company') as $co => $v) {
+            $coPrevFull[$co] = (float) $v;
+        }
 
         // índices
         $coTotal = array_fill_keys($slugs, 0.0);
@@ -122,17 +131,40 @@ class DashboardAggregator
         $ticketPrev = $grandPrevOrders > 0 ? $grandPrev / $grandPrevOrders : 0;
 
         // Projeção: hoje conta PROPORCIONAL ao horário (dias completos + fração
-        // de hoje), senão a média diária fica diluída (hoje como dia cheio) e a
-        // projeção sai baixa. Pressupõe ritmo de vendas ~uniforme no dia — como
-        // os dias completos dominam o denominador, fica estável mesmo de manhã.
+        // de hoje). Como os dias completos dominam o denominador, fica estável
+        // mesmo de manhã. Mesmo divisor é usado na projeção por empresa.
         $effectiveDays = $isCurrent ? (($daysElapsed - 1) + $dayFraction) : $daysElapsed;
-        $projection = $effectiveDays > 0 ? $grand / $effectiveDays * $daysInMonth : 0;
+        $projDiv = fn (float $atual) => $effectiveDays > 0 ? $atual / $effectiveDays * $daysInMonth : 0.0;
+        $projection = $projDiv($grand);
 
         $kpis = [
             'faturamento' => ['value' => $grand, 'prev' => $grandPrev, 'delta' => $this->pct($grand, $grandPrev)],
             'pedidos'     => ['value' => $grandOrders, 'prev' => $grandPrevOrders, 'delta' => $this->pct($grandOrders, $grandPrevOrders)],
             'ticket'      => ['value' => $ticket, 'prev' => $ticketPrev, 'delta' => $this->pct($ticket, $ticketPrev)],
             'projecao'    => ['value' => $projection, 'prev' => $prevFullTotal, 'delta' => $this->pct($projection, $prevFullTotal)],
+        ];
+
+        // ---- projeção do mês por empresa (atual + projeção + Δ vs mês ant. inteiro) ----
+        $projRows = [];
+        foreach ($slugs as $slug) {
+            $atual = $coTotal[$slug];
+            $proj = $projDiv($atual);
+            $projRows[] = [
+                'slug'     => $slug,
+                'name'     => $companiesCfg[$slug]['name'],
+                'color'    => $companiesCfg[$slug]['color'] ?? '#7c5cff',
+                'atual'    => round($atual, 2),
+                'projecao' => round($proj, 2),
+                'delta'    => $this->pct($proj, $coPrevFull[$slug] ?? 0),
+            ];
+        }
+        $projecaoMes = [
+            'rows'  => $projRows,
+            'total' => [
+                'atual'    => round($grand, 2),
+                'projecao' => round($projection, 2),
+                'delta'    => $this->pct($projection, $prevFullTotal),
+            ],
         ];
 
         // ---- por empresa ----
@@ -195,37 +227,6 @@ class DashboardAggregator
             $matrix[] = $row;
         }
 
-        // ---- hoje vs ontem (ontem proporcional ao horário atual) ----
-        // order_date guarda só a DATA (sem hora) — o /pedidos do Tiny v3 é por
-        // dia e o normalizeDate corta em YYYY-MM-DD. Então não dá pra recortar
-        // ontem pela hora real. Comparar dia parcial (hoje) com dia inteiro
-        // (ontem) enviesa tudo pra baixo; em vez disso escalamos o total de
-        // ontem pela fração do dia já decorrida ($dayFraction, calculado acima).
-        $today = $now->copy()->startOfDay();
-        $yest = $now->copy()->subDay()->startOfDay();
-        $todayBy = Order::selectRaw('company, SUM(value) v')->whereDate('order_date', $today->toDateString())->groupBy('company')->pluck('v', 'company');
-        $yestBy = Order::selectRaw('company, SUM(value) v')->whereDate('order_date', $yest->toDateString())->groupBy('company')->pluck('v', 'company');
-        $hojeVsOntem = [
-            'date_today' => $today->format('d/m'),
-            'date_yest'  => $yest->format('d/m'),
-            'time_now'   => $now->format('H:i'),
-            'day_pct'    => (int) round($dayFraction * 100),
-            'rows'       => [],
-            'total'      => [],
-        ];
-        $tHoje = 0.0; $tOntem = 0.0;
-        foreach ($slugs as $slug) {
-            $h = (float) ($todayBy[$slug] ?? 0);
-            $o = (float) ($yestBy[$slug] ?? 0) * $dayFraction; // ontem proporcional ao horário
-            $tHoje += $h; $tOntem += $o;
-            $hojeVsOntem['rows'][] = [
-                'name' => $companiesCfg[$slug]['name'],
-                'color'=> $companiesCfg[$slug]['color'] ?? '#7c5cff',
-                'hoje' => round($h, 2), 'ontem' => round($o, 2), 'delta' => $this->pct($h, $o),
-            ];
-        }
-        $hojeVsOntem['total'] = ['hoje' => round($tHoje, 2), 'ontem' => round($tOntem, 2), 'delta' => $this->pct($tHoje, $tOntem)];
-
         return [
             'month'         => $monthKey,
             'month_label'   => $this->monthLabel($monthKey),
@@ -239,10 +240,10 @@ class DashboardAggregator
                 'slug' => $s, 'name' => $companiesCfg[$s]['name'], 'color' => $companiesCfg[$s]['color'] ?? '#7c5cff',
             ], $slugs),
             'kpis'          => $kpis,
+            'projecao_mes'  => $projecaoMes,
             'por_empresa'   => $porEmpresa,
             'por_canal'     => $porCanal,
             'matrix'        => $matrix,
-            'hoje_vs_ontem' => $hojeVsOntem,
         ];
     }
 
