@@ -1,0 +1,66 @@
+name: keep-alive (anti-hibernação Laravel Cloud)
+
+# Por quê isto existe
+# -------------------
+# O ambiente no Laravel Cloud roda em compute "Flex", que HIBERNA quando fica
+# sem tráfego. Enquanto dorme, o scheduler do Laravel NÃO dispara — então o
+# `tiny:sync` (incremental a cada 5 min, 8h-22h) e a reconciliação diária das
+# 3h30 simplesmente não rodam, e o dashboard congela nos últimos números.
+#
+# Este workflow mantém a app acordada batendo em /up durante a janela em que o
+# scheduler precisa trabalhar. Assim o scheduler interno volta a rodar sozinho.
+#
+# Fuso: o cron do GitHub Actions é SEMPRE em UTC. Brasil (America/Sao_Paulo) é
+# UTC-3 e não tem mais horário de verão, então BRT = UTC-3 o ano todo.
+#   08:00-22:00 BRT  ->  11:00-01:00 UTC (vira o dia)
+#   03:30 BRT        ->  06:30 UTC
+#
+# Observações:
+# - Repo público => minutos de Actions são gratuitos e ilimitados.
+# - O agendador do GitHub é "best-effort" (pode atrasar/pular execuções), por
+#   isso cada execução fica ~4 min pingando (loop) pra cobrir buracos.
+# - Manter a app acordada nessa janela AUMENTA o uso de compute Flex vs. deixar
+#   hibernar — é o custo (pequeno) de ter o scheduler confiável. Fora da janela
+#   ela volta a dormir normalmente.
+# - GitHub desativa workflows agendados após ~60 dias sem atividade no repo;
+#   se isso acontecer, reative em Actions ou faça qualquer commit.
+
+on:
+  schedule:
+    - cron: '*/5 11-23 * * *'   # 08:00-20:55 BRT
+    - cron: '*/5 0-1 * * *'     # 21:00-22:55 BRT (fecha a janela do incremental)
+    - cron: '*/5 6 * * *'       # ~03:00-03:55 BRT (cobre a reconciliação das 3h30)
+  workflow_dispatch: {}          # permite disparar manualmente pra testar
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Acordar/manter a app (pings em /up por ~4 min)
+        env:
+          URL: https://dashboard-faturamento-main-2jhgqe.laravel.cloud/up
+        run: |
+          set -u
+          fails=0
+          for i in $(seq 1 5); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$URL" || echo "000")
+            echo "ping $i -> HTTP $code"
+            case "$code" in
+              2*|3*) : ;;               # 2xx/3xx = app respondeu (acordada)
+              *) fails=$((fails+1)) ;;
+            esac
+            [ "$i" -lt 5 ] && sleep 55 || true
+          done
+          # Só falha o job se TODOS os pings falharam (app realmente inacessível).
+          if [ "$fails" -ge 5 ]; then
+            echo "::error::Todos os pings falharam — app inacessível em $URL"
+            exit 1
+          fi
