@@ -32,9 +32,12 @@ class OrderSyncService
         $now = Carbon::now($tz);
         $statusFilter = collect(config('tiny.status_filter', []))->map(fn ($s) => (string) $s)->all();
 
+        // Nasce 'running'; vira 'ok'/'error' só no update do fim. Assim uma sync
+        // morta no meio (hibernação/timeout) fica 'running' pra sempre — nunca
+        // um 'ok' falso com finished_at nulo, que poluía "última sync OK".
         $log = SyncLog::create([
             'mode' => $mode,
-            'status' => 'ok',
+            'status' => 'running',
             'started_at' => now(),
             'orders_seen' => 0,
             'orders_upserted' => 0,
