@@ -22,24 +22,34 @@ Schedule::command('tiny:sync --mode=incremental')
     ->timezone(config('tiny.timezone', 'America/Sao_Paulo'));
 
 /*
-| Reconciliação diária do MÊS CORRENTE (1x/dia, de madrugada).
+| Reconciliação diária do MÊS CORRENTE (1x/dia, de madrugada), POR EMPRESA.
 | O incremental só re-busca os últimos 2 dias (limitação da v3: filtro
 | dataAlteracao dá HTTP 400), então mudança de status/cancelamento em pedido
 | mais antigo que isso NÃO é capturada. O `--month` re-varre o mês inteiro com
 | stale-delete (full scope), corrigindo esses casos.
 |
+| Por que POR EMPRESA (e não um único `--month`): a varredura de um mês inteiro
+| perto do fim do mês pode se aproximar do limite de 30 min de Command do Cloud
+| e ser morta no meio. Rodando uma empresa por vez (cada ~1/3 do trabalho), cada
+| run fica bem abaixo do limite. O stale-delete do OrderSyncService já é escopado
+| por empresa, então rodar isolado é equivalente ao run combinado.
+|
+| Escalonado 03:30 / 03:40 / 03:50 (BRT): dentro da janela em que o keep-alive
+| (GitHub Actions, ~03:00-03:55 BRT) mantém a app acordada pro scheduler disparar.
 | console.php é reavaliado a cada schedule:run, então `$mesCorrente` é sempre o
-| mês atual no momento da execução. Roda às 3h30 (fora da janela do incremental
-| e do horário de pico da API). Limite de 30 min do Command no Cloud: a varredura
-| de UM mês é metade do `full`; se um dia estourar, fatiar por --from/--to.
+| mês corrente no momento da execução.
 */
 $mesCorrente = now(config('tiny.timezone', 'America/Sao_Paulo'))->format('Y-m');
-Schedule::command("tiny:sync --month={$mesCorrente}")
-    ->dailyAt('03:30')
-    ->withoutOverlapping(30)     // varredura do mês pode ir ate ~30 min (limite do Cloud);
-                                 // expira junto pra nao travar a reconciliacao do dia seguinte
-    ->onOneServer()
-    ->timezone(config('tiny.timezone', 'America/Sao_Paulo'));
+$reconBaseMin = 3 * 60 + 30; // 03:30 BRT
+foreach (array_keys(config('tiny.companies', [])) as $i => $slug) {
+    $min = $reconBaseMin + $i * 10; // escalona de 10 em 10 min
+    $at = sprintf('%02d:%02d', intdiv($min, 60), $min % 60);
+    Schedule::command("tiny:sync --month={$mesCorrente} --company={$slug}")
+        ->dailyAt($at)
+        ->withoutOverlapping(30) // expira em 30 min (nunca fica preso ate o dia seguinte)
+        ->onOneServer()
+        ->timezone(config('tiny.timezone', 'America/Sao_Paulo'));
+}
 
 /*
 | Alerta de sync parado: 1x/hora na janela ativa (9h-22h). Fora dela o
