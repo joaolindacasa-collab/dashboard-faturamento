@@ -140,4 +140,58 @@ class DashboardProjecaoTest extends TestCase
         $this->assertSame(100.0, $dia10['values']['bella']);
         $this->assertSame(150.0, $dia10['total']);
     }
+
+    public function test_faturamento_do_dia_por_empresa_com_delta_vs_ontem(): void
+    {
+        // Hoje = 10/06; ontem = 09/06.
+        Carbon::setTestNow(Carbon::create(2026, 6, 10, 12, 0, 0, 'America/Sao_Paulo'));
+
+        // ontem (09): linda 100, bella 200.
+        $this->mkOrder('linda', 'l9', '2026-06-09', 100);
+        $this->mkOrder('bella', 'b9', '2026-06-09', 200);
+        // hoje (10): linda 50, bella 300, gv 10 (gv sem venda ontem => "novo").
+        $this->mkOrder('linda', 'l10', '2026-06-10', 50);
+        $this->mkOrder('bella', 'b10', '2026-06-10', 300);
+        $this->mkOrder('gv', 'g10', '2026-06-10', 10);
+
+        $h = (new DashboardAggregator())->forMonth('2026-06')['hoje'];
+
+        $this->assertTrue($h['is_today']);
+        $this->assertSame('10/06', $h['date_label']);
+        $this->assertSame('09/06', $h['prev_date_label']);
+
+        $rows = collect($h['rows'])->keyBy('slug');
+        $this->assertSame(50.0, $rows['linda']['hoje']);
+        $this->assertSame(100.0, $rows['linda']['ontem']);
+        $this->assertSame(-50.0, $rows['linda']['delta']);   // 50 vs 100
+        $this->assertSame(300.0, $rows['bella']['hoje']);
+        $this->assertSame(50.0, $rows['bella']['delta']);    // 300 vs 200
+        $this->assertSame(10.0, $rows['gv']['hoje']);
+        $this->assertNull($rows['gv']['delta']);             // ontem=0, hoje>0 => novo
+
+        $this->assertSame(360.0, $h['total']);               // 50+300+10
+        $this->assertSame(300.0, $h['total_prev']);          // 100+200
+        $this->assertSame(20.0, $h['total_delta']);          // 360 vs 300
+    }
+
+    public function test_faturamento_do_dia_em_mes_fechado_usa_ultimo_dia(): void
+    {
+        // Estamos em julho; olhando junho (mês fechado) => "dia" = 30/06, "ontem" = 29/06.
+        Carbon::setTestNow(Carbon::create(2026, 7, 5, 10, 0, 0, 'America/Sao_Paulo'));
+
+        $this->mkOrder('linda', 'j29', '2026-06-29', 400);
+        $this->mkOrder('linda', 'j30', '2026-06-30', 500);
+
+        $h = (new DashboardAggregator())->forMonth('2026-06')['hoje'];
+
+        $this->assertFalse($h['is_today']);
+        $this->assertSame('30/06', $h['date_label']);
+        $this->assertSame('29/06', $h['prev_date_label']);
+
+        $rows = collect($h['rows'])->keyBy('slug');
+        $this->assertSame(500.0, $rows['linda']['hoje']);
+        $this->assertSame(400.0, $rows['linda']['ontem']);
+        $this->assertSame(500.0, $h['total']);
+        $this->assertSame(400.0, $h['total_prev']);
+    }
 }

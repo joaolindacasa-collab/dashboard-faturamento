@@ -271,6 +271,55 @@ class DashboardAggregator
             'companies_ordered' => $companiesOrdered,
         ];
 
+        // ---- faturamento do dia (por empresa) ----
+        // "Hoje" = último dia do período: o dia atual se o mês é o corrente, senão
+        // o último dia do mês (mês fechado). "Ontem" = dia anterior, que pode cair
+        // no mês anterior (ex.: dia 1) — por isso consultamos por data absoluta, e
+        // não reaproveitamos o $byDay (restrito ao mês selecionado).
+        $hojeDate = $isCurrent ? $now->copy()->startOfDay() : $monthStart->copy()->endOfMonth();
+        $ontemDate = $hojeDate->copy()->subDay();
+
+        $sumByCompanyOnDate = function (string $date) use ($slugs) {
+            $out = array_fill_keys($slugs, 0.0);
+            foreach (Order::selectRaw('company, SUM(value) as v')
+                ->where('order_date', $date)
+                ->groupBy('company')->pluck('v', 'company') as $co => $v) {
+                if (array_key_exists($co, $out)) {
+                    $out[$co] = (float) $v;
+                }
+            }
+            return $out;
+        };
+        $hojeByCo = $sumByCompanyOnDate($hojeDate->toDateString());
+        $ontemByCo = $sumByCompanyOnDate($ontemDate->toDateString());
+
+        $hojeRows = [];
+        $hojeTotal = 0.0;
+        $hojeTotalPrev = 0.0;
+        foreach ($slugs as $slug) {
+            $hv = round($hojeByCo[$slug], 2);
+            $ov = round($ontemByCo[$slug], 2);
+            $hojeTotal += $hv;
+            $hojeTotalPrev += $ov;
+            $hojeRows[] = [
+                'slug'  => $slug,
+                'name'  => $companiesCfg[$slug]['name'],
+                'color' => $companiesCfg[$slug]['color'] ?? '#7c5cff',
+                'hoje'  => $hv,
+                'ontem' => $ov,
+                'delta' => $this->pct($hv, $ov),
+            ];
+        }
+        $hoje = [
+            'is_today'        => $isCurrent,
+            'date_label'      => $hojeDate->format('d/m'),
+            'prev_date_label' => $ontemDate->format('d/m'),
+            'rows'            => $hojeRows,
+            'total'           => round($hojeTotal, 2),
+            'total_prev'      => round($hojeTotalPrev, 2),
+            'total_delta'     => $this->pct($hojeTotal, $hojeTotalPrev),
+        ];
+
         return [
             'month'         => $monthKey,
             'month_label'   => $this->monthLabel($monthKey),
@@ -284,6 +333,7 @@ class DashboardAggregator
                 'slug' => $s, 'name' => $companiesCfg[$s]['name'], 'color' => $companiesCfg[$s]['color'] ?? '#7c5cff',
             ], $slugs),
             'kpis'          => $kpis,
+            'hoje'          => $hoje,
             'projecao_mes'  => $projecaoMes,
             'faturamento_diario' => $faturamentoDiario,
             'por_empresa'   => $porEmpresa,
