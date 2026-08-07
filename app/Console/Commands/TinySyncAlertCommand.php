@@ -38,7 +38,11 @@ class TinySyncAlertCommand extends Command
         $tz = config('tiny.timezone', 'America/Sao_Paulo');
         $now = Carbon::now($tz);
 
-        $lastOk = SyncLog::where('status', 'ok')->latest('finished_at')->first();
+        // whereNotNull('finished_at'): ignora syncs que começaram (status inicial
+        // 'ok') mas não concluíram (finished_at nulo). Sem isso, um registro
+        // fantasma faz $finishedAt vir nulo => sempre "stale" => falso alerta de
+        // "sync parado" mesmo com as syncs rodando normalmente.
+        $lastOk = SyncLog::where('status', 'ok')->whereNotNull('finished_at')->latest('finished_at')->first();
         $finishedAt = $lastOk?->finished_at;
 
         $ageHours = $finishedAt ? $finishedAt->copy()->diffInMinutes($now) / 60 : null;
