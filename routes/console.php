@@ -16,7 +16,8 @@ Artisan::command('inspire', function () {
 Schedule::command('tiny:sync --mode=incremental')
     ->everyFiveMinutes()
     ->between('8:00', '22:00')   // todos os dias (inclui domingo); marketplaces vendem 7 dias
-    ->withoutOverlapping()
+    ->withoutOverlapping(15)     // lock expira em 15 min; sem isso o default é 24h e uma sync
+                                 // morta no meio (hibernação/timeout) travaria os proximos runs por 1 dia
     ->onOneServer() // evita rodar em todas as réplicas no Laravel Cloud
     ->timezone(config('tiny.timezone', 'America/Sao_Paulo'));
 
@@ -35,7 +36,8 @@ Schedule::command('tiny:sync --mode=incremental')
 $mesCorrente = now(config('tiny.timezone', 'America/Sao_Paulo'))->format('Y-m');
 Schedule::command("tiny:sync --month={$mesCorrente}")
     ->dailyAt('03:30')
-    ->withoutOverlapping()
+    ->withoutOverlapping(30)     // varredura do mês pode ir ate ~30 min (limite do Cloud);
+                                 // expira junto pra nao travar a reconciliacao do dia seguinte
     ->onOneServer()
     ->timezone(config('tiny.timezone', 'America/Sao_Paulo'));
 
@@ -47,6 +49,6 @@ Schedule::command("tiny:sync --month={$mesCorrente}")
 Schedule::command('tiny:sync-alert')
     ->hourly()
     ->between('9:00', '22:00')
-    ->withoutOverlapping()
+    ->withoutOverlapping(10)     // check leve; expira rapido pra nunca ficar preso
     ->onOneServer()
     ->timezone(config('tiny.timezone', 'America/Sao_Paulo'));
