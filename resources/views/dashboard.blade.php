@@ -95,6 +95,38 @@
             </div>
         </header>
 
+        {{-- ============ FATURAMENTO DO DIA (por empresa) ============ --}}
+        @php $h = $d['hoje']; @endphp
+        <section class="panel rounded-xl p-4">
+            <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+                <div class="text-[11px] lbl uppercase text-gray-500">
+                    Faturamento de {{ $h['is_today'] ? 'hoje' : 'último dia' }}
+                    <span class="text-gray-600">({{ $h['date_label'] }})</span>
+                </div>
+                <div class="text-xs text-gray-500">
+                    {{ $h['is_today'] ? 'Ontem' : 'Dia anterior' }} ({{ $h['prev_date_label'] }}):
+                    {{ $money($h['total_prev']) }} {!! $delta($h['total_delta']) !!}
+                </div>
+            </div>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                @foreach ($h['rows'] as $r)
+                    <div class="rounded-lg bg-[#0c0e19] border border-[#1a1e30] p-3">
+                        <div class="text-xs text-gray-400 flex items-center gap-1.5">
+                            <span class="h-2 w-2 rounded-full" style="background: {{ $r['color'] }}"></span>{{ $r['name'] }}
+                        </div>
+                        <div class="text-2xl font-bold text-white mt-1">{{ $money($r['hoje']) }}</div>
+                        <div class="text-[11px] text-gray-500 mt-0.5">{!! $delta($r['delta']) !!} vs. {{ $h['prev_date_label'] }}</div>
+                    </div>
+                @endforeach
+                {{-- total consolidado do dia --}}
+                <div class="rounded-lg bg-[#11131f] border border-[#242a41] p-3">
+                    <div class="text-xs text-gray-400 uppercase tracking-wide">Total do dia</div>
+                    <div class="text-2xl font-bold text-white mt-1">{{ $money($h['total']) }}</div>
+                    <div class="text-[11px] text-gray-500 mt-0.5">{!! $delta($h['total_delta']) !!} vs. {{ $h['prev_date_label'] }}</div>
+                </div>
+            </div>
+        </section>
+
         {{-- ============ KPIs ============ --}}
         <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             @php
