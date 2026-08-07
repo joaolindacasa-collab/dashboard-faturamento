@@ -10,7 +10,11 @@ class StatusController extends Controller
 {
     public function index()
     {
-        $lastOk = SyncLog::where('status', 'ok')->latest('finished_at')->first();
+        // O SyncLog nasce com status='ok' e finished_at=null; só ganha finished_at
+        // ao concluir. Se uma sync morre no meio (hibernação/timeout), fica um
+        // registro fantasma ok+finished_at nulo. whereNotNull garante que "última
+        // sync OK" seja a última CONCLUÍDA (senão o fantasma mascara as reais).
+        $lastOk = SyncLog::where('status', 'ok')->whereNotNull('finished_at')->latest('finished_at')->first();
         $lastAny = SyncLog::latest('id')->first();
         $recentErrors = SyncLog::where('status', 'error')->latest('id')->limit(5)->get();
 
