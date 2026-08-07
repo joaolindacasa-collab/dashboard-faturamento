@@ -15,9 +15,14 @@ return [
     'oauth' => [
         'auth_url'  => env('TINY_OAUTH_AUTH_URL', 'https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/auth'),
         'token_url' => env('TINY_OAUTH_TOKEN_URL', 'https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/token'),
-        // Mesmo redirect_uri registrado nas apps Tiny. A página pode dar 404 ao
-        // redirecionar — só precisamos do ?code= da barra de endereços.
-        'redirect_uri' => env('TINY_OAUTH_REDIRECT_URI', 'https://163-176-145-105.sslip.io/oauth/callback'),
+        // redirect_uri do OAuth. Deixe SEM valor (não defina TINY_OAUTH_REDIRECT_URI)
+        // pra usar automaticamente a rota de callback da própria app —
+        // route('tiny.callback') => APP_URL + /tiny/callback — que é o correto no
+        // Laravel Cloud. Veja TinyClient::redirectUri(): `config(...) ?: route(...)`.
+        // Defina a env só se precisar forçar outra URL.
+        // IMPORTANTE: o valor efetivo TEM de estar registrado, idêntico, no OAuth
+        // de cada app no painel do Tiny (Configurações → Aplicativos).
+        'redirect_uri' => env('TINY_OAUTH_REDIRECT_URI'),
         'scope' => env('TINY_OAUTH_SCOPE', 'openid'),
     ],
 
