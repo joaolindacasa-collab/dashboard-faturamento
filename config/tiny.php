@@ -74,6 +74,10 @@ return [
             'color' => '#ffb84d',
             'client_id'     => env('TINY_GV_CLIENT_ID'),
             'client_secret' => env('TINY_GV_CLIENT_SECRET'),
+            // GV parou de vender (11/08/2026). sync desativado: nada novo é buscado
+            // nem apagado — os pedidos já na base continuam sendo exibidos no
+            // dashboard com o saldo atual. Pra reativar, remova esta linha.
+            'sync' => false,
         ],
     ],
 
