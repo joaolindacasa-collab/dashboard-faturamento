@@ -42,6 +42,9 @@ Schedule::command('tiny:sync --mode=incremental')
 $mesCorrente = now(config('tiny.timezone', 'America/Sao_Paulo'))->format('Y-m');
 $reconBaseMin = 3 * 60 + 30; // 03:30 BRT
 foreach (array_keys(config('tiny.companies', [])) as $i => $slug) {
+    if (config("tiny.companies.{$slug}.sync", true) === false) {
+        continue; // empresa com sync desativado (ex.: parou de vender) não reconcilia
+    }
     $min = $reconBaseMin + $i * 10; // escalona de 10 em 10 min
     $at = sprintf('%02d:%02d', intdiv($min, 60), $min % 60);
     Schedule::command("tiny:sync --month={$mesCorrente} --company={$slug}")

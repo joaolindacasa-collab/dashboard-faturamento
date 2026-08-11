@@ -53,6 +53,11 @@ class OrderSyncService
         if ($onlyCompanies) {
             $slugs = array_values(array_filter($slugs, fn ($s) => in_array($s, $onlyCompanies, true)));
         }
+        // Empresas com sync desativado (config 'sync' => false, ex.: pararam de
+        // vender) são ignoradas no fetch — nunca são buscadas nem sofrem
+        // stale-delete, então o saldo já gravado permanece e segue no dashboard.
+        $companiesCfg = $this->client->companies();
+        $slugs = array_values(array_filter($slugs, fn ($s) => ($companiesCfg[$s]['sync'] ?? true) !== false));
 
         // Cada empresa é isolada: se uma não está conectada / sem credenciais,
         // ela é PULADA (logada) e o sync continua com as demais.
