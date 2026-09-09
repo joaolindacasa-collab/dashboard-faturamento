@@ -194,4 +194,30 @@ class DashboardProjecaoTest extends TestCase
         $this->assertSame(500.0, $h['total']);
         $this->assertSame(400.0, $h['total_prev']);
     }
+
+    public function test_empresa_com_hidden_from_some_do_mes_alvo_mas_fica_no_historico(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 8, 15, 12, 0, 0, 'America/Sao_Paulo'));
+        // GV oculta a partir de agosto/2026 (o config real já traz isso; explícito p/ clareza).
+        config(['tiny.companies.gv.hidden_from' => '2026-08']);
+
+        // GV vendeu em julho (histórico) e em agosto (antes de parar); Linda nos dois.
+        $this->mkOrder('gv', 'gv-jul', '2026-07-10', 300);
+        $this->mkOrder('gv', 'gv-ago', '2026-08-05', 200);
+        $this->mkOrder('linda', 'li-jul', '2026-07-10', 800);
+        $this->mkOrder('linda', 'li-ago', '2026-08-05', 1000);
+
+        // AGOSTO (mês corrente): GV some de tudo (colunas, por empresa, card do dia).
+        $ago = (new DashboardAggregator())->forMonth('2026-08');
+        $this->assertNotContains('gv', collect($ago['companies'])->pluck('slug')->all());
+        $this->assertNotContains('gv', collect($ago['por_empresa'])->pluck('slug')->all());
+        $this->assertNotContains('gv', collect($ago['hoje']['rows'])->pluck('slug')->all());
+        // Total de agosto = só Linda (1000); os 200 da GV NÃO entram no consolidado.
+        $this->assertSame(1000.0, $ago['kpis']['faturamento']['value']);
+
+        // JULHO (histórico): GV continua aparecendo e somando no total.
+        $jul = (new DashboardAggregator())->forMonth('2026-07');
+        $this->assertContains('gv', collect($jul['companies'])->pluck('slug')->all());
+        $this->assertSame(1100.0, $jul['kpis']['faturamento']['value']); // 800 linda + 300 gv
+    }
 }
