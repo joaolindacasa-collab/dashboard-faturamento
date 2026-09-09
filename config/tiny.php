@@ -75,9 +75,12 @@ return [
             'client_id'     => env('TINY_GV_CLIENT_ID'),
             'client_secret' => env('TINY_GV_CLIENT_SECRET'),
             // GV parou de vender (11/08/2026). sync desativado: nada novo é buscado
-            // nem apagado — os pedidos já na base continuam sendo exibidos no
-            // dashboard com o saldo atual. Pra reativar, remova esta linha.
+            // nem apagado. Pra reativar o sync, remova a linha 'sync'.
             'sync' => false,
+            // Removida da dashboard a partir de agosto/2026: some do mês corrente em
+            // diante, mas continua no HISTÓRICO (meses < hidden_from seguem mostrando
+            // a GV). Dados preservados no banco. Pra voltar a exibir, remova a linha.
+            'hidden_from' => '2026-08',
         ],
     ],
 

@@ -76,7 +76,11 @@ class DashboardAggregator
 
         $unknown = config('tiny.unknown_channel', 'Sem canal');
         $companiesCfg = config('tiny.companies', []);
-        $slugs = array_keys($companiesCfg);
+        // Empresas VISÍVEIS neste mês. Uma empresa com 'hidden_from' => 'YYYY-MM'
+        // some do mês igual/posterior, mas continua nos meses anteriores (histórico).
+        // Todas as queries abaixo são escopadas a $slugs, então uma empresa oculta
+        // não vaza nem pros totais/canais/matriz.
+        $slugs = $this->activeSlugsForMonth($monthKey);
 
         // ---- limites de datas (portável: MySQL e Postgres, sem DATE_FORMAT/DAYOFMONTH) ----
         $curStart = $monthStart->toDateString();
@@ -90,14 +94,15 @@ class DashboardAggregator
         }
 
         // ---- agregados crus ----
-        $cur = $this->grouped($curStart, $curEnd, $unknown);                              // mês selecionado (até hoje, se atual)
-        $prevPer = $this->grouped($prevStart->toDateString(), $prevPerEnd->toDateString(), $unknown); // mês anterior, mesmo período
-        $prevFullTotal = (float) Order::whereBetween('order_date', [$prevStart->toDateString(), $prevMonthEnd->toDateString()])->sum('value');
+        $cur = $this->grouped($curStart, $curEnd, $unknown, $slugs);                              // mês selecionado (até hoje, se atual)
+        $prevPer = $this->grouped($prevStart->toDateString(), $prevPerEnd->toDateString(), $unknown, $slugs); // mês anterior, mesmo período
+        $prevFullTotal = (float) Order::whereBetween('order_date', [$prevStart->toDateString(), $prevMonthEnd->toDateString()])->whereIn('company', $slugs)->sum('value');
 
         // total do mês anterior INTEIRO por empresa (base do Δ da projeção).
         $coPrevFull = array_fill_keys($slugs, 0.0);
         foreach (Order::selectRaw('company, SUM(value) v')
             ->whereBetween('order_date', [$prevStart->toDateString(), $prevMonthEnd->toDateString()])
+            ->whereIn('company', $slugs)
             ->groupBy('company')->pluck('v', 'company') as $co => $v) {
             $coPrevFull[$co] = (float) $v;
         }
@@ -235,6 +240,7 @@ class DashboardAggregator
         $byDay = [];
         foreach (Order::selectRaw('order_date, company, SUM(value) as v')
             ->whereBetween('order_date', [$curStart, $curEnd])
+            ->whereIn('company', $slugs)
             ->groupBy('order_date', 'company')->get() as $r) {
             $dateStr = substr((string) $r->order_date, 0, 10);
             $byDay[$dateStr][$r->company] = (float) $r->v;
@@ -283,6 +289,7 @@ class DashboardAggregator
             $out = array_fill_keys($slugs, 0.0);
             foreach (Order::selectRaw('company, SUM(value) as v')
                 ->where('order_date', $date)
+                ->whereIn('company', $slugs)
                 ->groupBy('company')->pluck('v', 'company') as $co => $v) {
                 if (array_key_exists($co, $out)) {
                     $out[$co] = (float) $v;
@@ -344,15 +351,37 @@ class DashboardAggregator
 
     /**
      * Agrupa pedidos por (company, channel) num intervalo de datas [start, end]
-     * (inclusivo). Portável entre MySQL e Postgres: usa whereBetween + COALESCE/
-     * NULLIF (SQL padrão), sem funções específicas de data.
+     * (inclusivo), limitado às empresas $slugs. Portável entre MySQL e Postgres:
+     * usa whereBetween + COALESCE/NULLIF (SQL padrão), sem funções de data.
      */
-    private function grouped(string $startDate, string $endDate, string $unknown)
+    private function grouped(string $startDate, string $endDate, string $unknown, array $slugs)
     {
         return Order::query()
             ->selectRaw('company, COALESCE(NULLIF(channel, ?), ?) as ch, SUM(value) as v, COUNT(*) as c', ['', $unknown])
             ->whereBetween('order_date', [$startDate, $endDate])
+            ->whereIn('company', $slugs)
             ->groupBy('company', 'ch')
             ->get();
+    }
+
+    /**
+     * Slugs das empresas visíveis num dado mês. Uma empresa com
+     * 'hidden_from' => 'YYYY-MM' no config some a partir daquele mês (inclusive),
+     * mas continua aparecendo nos meses anteriores (histórico preservado).
+     * Comparação lexicográfica de 'YYYY-MM' funciona como ordem cronológica.
+     *
+     * @return list<string>
+     */
+    private function activeSlugsForMonth(string $monthKey): array
+    {
+        $out = [];
+        foreach (config('tiny.companies', []) as $slug => $cfg) {
+            $hiddenFrom = $cfg['hidden_from'] ?? null;
+            if ($hiddenFrom !== null && $monthKey >= $hiddenFrom) {
+                continue;
+            }
+            $out[] = $slug;
+        }
+        return $out;
     }
 }
