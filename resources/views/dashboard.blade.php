@@ -45,8 +45,17 @@
                 <h1 class="text-xl font-bold text-white flex items-center gap-2">
                     Faturamento <span class="text-rose-500">·</span> <span class="text-rose-400">Live</span>
                 </h1>
+                @php
+                    // Empresas ativas no mês visto (some quem foi removida — ex.: GV a partir de ago/26).
+                    $coNames = collect($d['companies'])->map(fn ($c) => explode(' ', $c['name'])[0])->implode(' · ');
+                @endphp
                 <p class="text-xs text-gray-500 mt-0.5">
-                    Bella · Linda · GV — {{ $d['month_label'] }} · até dia {{ $d['days_elapsed'] }} vs. mesmo período de {{ $d['prev_short'] }}
+                    {{ $coNames }} — {{ $d['month_label'] }} ·
+                    @if ($d['is_current'])
+                        até dia {{ $d['days_elapsed'] }} vs. mesmo período de {{ $d['prev_short'] }}
+                    @else
+                        mês fechado vs. {{ $d['prev_short'] }}
+                    @endif
                 </p>
             </div>
 
@@ -96,16 +105,28 @@
         </header>
 
         {{-- ============ FATURAMENTO DO DIA (por empresa) ============ --}}
-        @php $h = $d['hoje']; @endphp
+        @php
+            $h = $d['hoje'];
+            // Dia CORRENTE = parcial (só foi até agora). Comparar com o dia inteiro de
+            // ontem daria uma queda enorme e falsa de manhã, então não mostramos o Δ;
+            // exibimos o valor de ontem só como referência ("dia todo"). Em dias fechados
+            // (histórico) o comparativo é dia-cheio vs dia-cheio, aí o Δ vale.
+            $live = $h['is_today'];
+        @endphp
         <section class="panel rounded-xl p-4">
             <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
-                <div class="text-[11px] lbl uppercase text-gray-500">
-                    Faturamento de {{ $h['is_today'] ? 'hoje' : 'último dia' }}
-                    <span class="text-gray-600">({{ $h['date_label'] }})</span>
+                <div class="text-[11px] lbl uppercase text-gray-500 flex items-center gap-2">
+                    <span>Faturamento de {{ $live ? 'hoje' : 'último dia' }} <span class="text-gray-600">({{ $h['date_label'] }})</span></span>
+                    @if ($live)
+                        <span class="normal-case tracking-normal text-[10px] font-medium text-amber-400/90 bg-amber-400/10 rounded px-1.5 py-0.5">parcial</span>
+                    @endif
                 </div>
                 <div class="text-xs text-gray-500">
-                    {{ $h['is_today'] ? 'Ontem' : 'Dia anterior' }} ({{ $h['prev_date_label'] }}):
-                    {{ $money($h['total_prev']) }} {!! $delta($h['total_delta']) !!}
+                    @if ($live)
+                        Ontem ({{ $h['prev_date_label'] }}), dia todo: <span class="text-gray-400">{{ $money($h['total_prev']) }}</span>
+                    @else
+                        Dia anterior ({{ $h['prev_date_label'] }}): {{ $money($h['total_prev']) }} {!! $delta($h['total_delta']) !!}
+                    @endif
                 </div>
             </div>
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -115,14 +136,26 @@
                             <span class="h-2 w-2 rounded-full" style="background: {{ $r['color'] }}"></span>{{ $r['name'] }}
                         </div>
                         <div class="text-2xl font-bold text-white mt-1">{{ $money($r['hoje']) }}</div>
-                        <div class="text-[11px] text-gray-500 mt-0.5">{!! $delta($r['delta']) !!} vs. {{ $h['prev_date_label'] }}</div>
+                        <div class="text-[11px] text-gray-500 mt-0.5">
+                            @if ($live)
+                                <span class="text-gray-600">ontem: {{ $money($r['ontem']) }}</span>
+                            @else
+                                {!! $delta($r['delta']) !!} vs. {{ $h['prev_date_label'] }}
+                            @endif
+                        </div>
                     </div>
                 @endforeach
                 {{-- total consolidado do dia --}}
                 <div class="rounded-lg bg-[#11131f] border border-[#242a41] p-3">
                     <div class="text-xs text-gray-400 uppercase tracking-wide">Total do dia</div>
                     <div class="text-2xl font-bold text-white mt-1">{{ $money($h['total']) }}</div>
-                    <div class="text-[11px] text-gray-500 mt-0.5">{!! $delta($h['total_delta']) !!} vs. {{ $h['prev_date_label'] }}</div>
+                    <div class="text-[11px] text-gray-500 mt-0.5">
+                        @if ($live)
+                            <span class="text-gray-600">ontem: {{ $money($h['total_prev']) }}</span>
+                        @else
+                            {!! $delta($h['total_delta']) !!} vs. {{ $h['prev_date_label'] }}
+                        @endif
+                    </div>
                 </div>
             </div>
         </section>
@@ -235,8 +268,8 @@
                                                 }
                                             }
                                         @endphp
-                                        <div class="flex-1 flex flex-col justify-end h-full hover:opacity-90 transition-opacity" title="{{ $tip }}">
-                                            <div class="flex flex-col-reverse rounded-t-sm overflow-hidden" style="height: {{ $barPct }}%">
+                                        <div class="flex-1 flex flex-col justify-end h-full hover:opacity-90 transition-opacity rounded-sm {{ $day['is_weekend'] ? 'bg-white/[0.04]' : '' }}" title="{{ $tip }}">
+                                            <div class="flex flex-col-reverse rounded-t-sm overflow-hidden {{ $day['is_today'] ? 'ring-1 ring-amber-300/80' : '' }}" style="height: {{ $barPct }}%">
                                                 @foreach ($cos as $co)
                                                     @php
                                                         $v = $day['values'][$co['slug']] ?? 0;
@@ -259,7 +292,7 @@
                             {{-- eixo X: todo dia rotulado --}}
                             <div class="flex gap-px mt-1">
                                 @foreach ($fd['days'] as $day)
-                                    <div class="flex-1 text-center text-[8px] text-gray-500 tabular-nums">{{ $day['dia'] }}</div>
+                                    <div class="flex-1 text-center text-[8px] tabular-nums {{ $day['is_today'] ? 'text-amber-300 font-bold' : ($day['is_weekend'] ? 'text-gray-600' : 'text-gray-500') }}">{{ $day['dia'] }}</div>
                                 @endforeach
                             </div>
                         </div>

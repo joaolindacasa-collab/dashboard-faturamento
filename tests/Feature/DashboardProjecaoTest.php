@@ -220,4 +220,26 @@ class DashboardProjecaoTest extends TestCase
         $this->assertContains('gv', collect($jul['companies'])->pluck('slug')->all());
         $this->assertSame(1100.0, $jul['kpis']['faturamento']['value']); // 800 linda + 300 gv
     }
+
+    public function test_serie_diaria_marca_hoje_e_fins_de_semana(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 6, 10, 12, 0, 0, 'America/Sao_Paulo'));
+        $this->mkOrder('linda', 'x', '2026-06-10', 100);
+
+        $days = collect((new DashboardAggregator())->forMonth('2026-06')['faturamento_diario']['days'])->keyBy('dia');
+
+        // is_today: só o dia corrente (10).
+        $this->assertTrue($days[10]['is_today']);
+        $this->assertFalse($days[9]['is_today']);
+
+        // is_weekend deve bater com o dia da semana real de cada data (sáb/dom).
+        foreach ($days as $dia => $day) {
+            $dow = Carbon::parse($day['date'])->dayOfWeek; // 0=dom .. 6=sáb
+            $this->assertSame(
+                in_array($dow, [Carbon::SATURDAY, Carbon::SUNDAY], true),
+                $day['is_weekend'],
+                "dia {$dia} ({$day['date']}) is_weekend incorreto"
+            );
+        }
+    }
 }
