@@ -60,8 +60,14 @@
             </div>
 
             <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-                <span class="flex items-center gap-1.5 text-gray-400">
-                    <span class="h-2 w-2 rounded-full bg-amber-400"></span> Gerado {{ $d['generated_at'] }}
+                @php
+                    // Indicador de frescor: verde (<=15min), amarelo (<=90min), vermelho (mais/sem sync).
+                    $age = $sync['age_min'] ?? null;
+                    $dot = $age === null ? 'bg-rose-500' : ($age <= 15 ? 'bg-emerald-400' : ($age <= 90 ? 'bg-amber-400' : 'bg-rose-500'));
+                    $syncTxt = $age === null ? 'sem sync' : ($age < 1 ? 'sincronizado agora' : 'sincronizado há ' . $age . ' min');
+                @endphp
+                <span class="flex items-center gap-1.5 text-gray-400" title="Última sync OK: {{ $sync['at'] ?? '—' }}">
+                    <span class="h-2 w-2 rounded-full {{ $dot }}"></span> {{ $syncTxt }}
                 </span>
                 <span class="text-gray-400">
                     Próximo reload em <span class="text-gray-200 font-medium" x-text="countdownLabel()"></span>
