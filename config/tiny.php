@@ -97,6 +97,7 @@ return [
         'shopee' => 'Shopee',
         'magalu' => 'Magalu',
         'magazine luiza' => 'Magalu',
+        'magalu marketplace' => 'Magalu', // mesmo canal que 'Magalu', p/ comparativo
         'amazon' => 'Amazon',
         'yampi' => 'Yampi',
         'linda casa' => 'Yampi',
