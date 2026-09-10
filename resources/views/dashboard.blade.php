@@ -53,7 +53,7 @@
     <meta name="theme-color" content="#0a0b14">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-mobile-web-app-title" content="Faturamento">
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="apple-touch-icon" href="/icons/icon-180.png">
@@ -72,6 +72,7 @@
             padding-right: max(1rem, env(safe-area-inset-right));
             padding-bottom: max(1rem, env(safe-area-inset-bottom));
         }
+        [x-cloak] { display: none !important; }
     </style>
 </head>
 <body class="text-gray-200 antialiased"
@@ -229,20 +230,24 @@
         </section>
 
         {{-- ============ PROJEÇÃO DO MÊS (largura total) ============ --}}
-        <section class="panel rounded-xl p-4">
-            <div class="text-[11px] lbl uppercase text-gray-500 mb-1">Projeção do mês</div>
-            <div class="text-[10px] text-gray-600 mb-4">Com base no ritmo diário atual · Δ vs. {{ $d['prev_short'] }} (mês inteiro)</div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <section class="panel rounded-xl p-4" x-data="{ open: window.innerWidth >= 640 }">
+            <button type="button" class="w-full flex items-start justify-between gap-3 text-left" @click="if (window.innerWidth < 640) open = !open">
+                <div>
+                    <div class="text-[11px] lbl uppercase text-gray-500">Projeção do mês</div>
+                    <div class="text-[10px] text-gray-600 mt-0.5">Com base no ritmo diário atual · Δ vs. {{ $d['prev_short'] }} (mês inteiro)</div>
+                </div>
+                <svg class="w-4 h-4 text-gray-500 shrink-0 sm:hidden transition-transform" :class="open ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+            </button>
+            <div x-show="open" x-cloak class="mt-4 grid grid-cols-1 lg:grid-cols-5 gap-6">
                 {{-- tabela de projeção --}}
                 <div class="lg:col-span-2">
                     <table class="w-full text-sm whitespace-nowrap">
                         <thead>
                             <tr class="text-[11px] uppercase text-gray-500 border-b border-[#1e2235]">
                                 <th class="text-left font-medium py-1.5">Empresa</th>
-                                <th class="text-right font-medium pl-3">Atual</th>
+                                <th class="text-right font-medium pl-3 hidden sm:table-cell">Atual</th>
                                 <th class="text-right font-medium pl-3">Projeção</th>
-                                <th class="text-right font-medium pl-3">{{ $d['prev_short'] }}</th>
+                                <th class="text-right font-medium pl-3 hidden sm:table-cell">{{ $d['prev_short'] }}</th>
                                 <th class="text-right font-medium pl-3">Δ</th>
                             </tr>
                         </thead>
@@ -252,17 +257,17 @@
                                     <td class="py-2 flex items-center gap-2">
                                         <span class="h-2 w-2 rounded-full" style="background: {{ $r['color'] }}"></span>{{ $r['name'] }}
                                     </td>
-                                    <td class="text-right text-gray-400 pl-3">{{ $money($r['atual']) }}</td>
+                                    <td class="text-right text-gray-400 pl-3 hidden sm:table-cell">{{ $money($r['atual']) }}</td>
                                     <td class="text-right text-gray-200 pl-3">{{ $money($r['projecao']) }}</td>
-                                    <td class="text-right text-gray-500 pl-3">{{ $money($r['mes_anterior']) }}</td>
+                                    <td class="text-right text-gray-500 pl-3 hidden sm:table-cell">{{ $money($r['mes_anterior']) }}</td>
                                     <td class="text-right pl-3">{!! $delta($r['delta']) !!}</td>
                                 </tr>
                             @endforeach
                             <tr class="font-semibold">
                                 <td class="py-2 text-gray-400 uppercase text-xs">Total</td>
-                                <td class="text-right text-gray-300 pl-3">{{ $money($d['projecao_mes']['total']['atual']) }}</td>
+                                <td class="text-right text-gray-300 pl-3 hidden sm:table-cell">{{ $money($d['projecao_mes']['total']['atual']) }}</td>
                                 <td class="text-right text-white pl-3">{{ $money($d['projecao_mes']['total']['projecao']) }}</td>
-                                <td class="text-right text-gray-400 pl-3">{{ $money($d['projecao_mes']['total']['mes_anterior']) }}</td>
+                                <td class="text-right text-gray-400 pl-3 hidden sm:table-cell">{{ $money($d['projecao_mes']['total']['mes_anterior']) }}</td>
                                 <td class="text-right pl-3">{!! $delta($d['projecao_mes']['total']['delta']) !!}</td>
                             </tr>
                         </tbody>
@@ -277,7 +282,7 @@
                         $cos = $fd['companies_ordered'];   // maior faturamento primeiro
                         $chartH = 256;                     // px, casa com h-64
                     @endphp
-                    <div class="flex items-center justify-between mb-2 gap-3 flex-wrap">
+                    <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
                         <span class="text-[11px] uppercase text-gray-500">Faturamento por dia</span>
                         <div class="flex flex-wrap gap-3 text-[11px] text-gray-400">
                             @foreach ($cos as $co)
@@ -361,14 +366,17 @@
 
             {{-- POR EMPRESA --}}
             <div class="panel rounded-xl p-4">
-                <div class="text-[11px] lbl uppercase text-gray-500 mb-3">Por empresa ({{ $d['month_short'] }})</div>
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-[11px] lbl uppercase text-gray-500">Por empresa ({{ $d['month_short'] }})</span>
+                    <span class="text-[9px] text-gray-600 sm:hidden">toque p/ detalhes</span>
+                </div>
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="text-[11px] uppercase text-gray-500 border-b border-[#1e2235]">
                             <th class="text-left font-medium py-1.5">Empresa</th>
                             <th class="text-right font-medium">Fatur.</th>
-                            <th class="text-right font-medium">Ped.</th>
-                            <th class="text-right font-medium">Ticket</th>
+                            <th class="text-right font-medium hidden sm:table-cell">Ped.</th>
+                            <th class="text-right font-medium hidden sm:table-cell">Ticket</th>
                             <th class="text-right font-medium">Δ vs. ant.</th>
                         </tr>
                     </thead>
@@ -404,9 +412,9 @@
                                         @endif
                                     </div>
                                 </td>
-                                <td class="text-right text-gray-200">{{ $money($r['fat']) }}</td>
-                                <td class="text-right text-gray-400">{{ $int($r['ped']) }}</td>
-                                <td class="text-right text-gray-400">{{ $money($r['ticket']) }}</td>
+                                <td class="text-right text-gray-200 whitespace-nowrap">{{ $money($r['fat']) }}</td>
+                                <td class="text-right text-gray-400 hidden sm:table-cell">{{ $int($r['ped']) }}</td>
+                                <td class="text-right text-gray-400 hidden sm:table-cell">{{ $money($r['ticket']) }}</td>
                                 <td class="text-right">{!! $delta($r['delta']) !!}</td>
                             </tr>
                         @endforeach
@@ -415,8 +423,12 @@
             </div>
 
             {{-- POR CANAL --}}
-            <div class="panel rounded-xl p-4">
-                <div class="text-[11px] lbl uppercase text-gray-500 mb-3">Por canal ({{ $d['month_short'] }})</div>
+            <div class="panel rounded-xl p-4" x-data="{ open: window.innerWidth >= 640 }">
+                <button type="button" class="w-full flex items-center justify-between text-left" @click="if (window.innerWidth < 640) open = !open">
+                    <span class="text-[11px] lbl uppercase text-gray-500">Por canal ({{ $d['month_short'] }})</span>
+                    <svg class="w-4 h-4 text-gray-500 shrink-0 sm:hidden transition-transform" :class="open ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+                </button>
+                <div x-show="open" x-cloak class="mt-3">
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="text-[11px] uppercase text-gray-500 border-b border-[#1e2235]">
@@ -439,13 +451,18 @@
                         @endforelse
                     </tbody>
                 </table>
+                </div>
             </div>
         </section>
 
         {{-- ============ MATRIZ EMPRESA × CANAL ============ --}}
-        <section class="panel rounded-xl p-4">
-            <div class="flex flex-wrap items-center gap-x-4 mb-3">
+        <section class="panel rounded-xl p-4" x-data="{ open: window.innerWidth >= 640 }">
+            <button type="button" class="w-full flex items-center justify-between text-left gap-3" @click="if (window.innerWidth < 640) open = !open">
                 <span class="text-[11px] lbl uppercase text-gray-500">Empresa × Canal — Faturamento em {{ $d['month_short'] }}</span>
+                <svg class="w-4 h-4 text-gray-500 shrink-0 sm:hidden transition-transform" :class="open ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+            </button>
+            <div x-show="open" x-cloak class="mt-3">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3">
                 <span class="text-xs text-sky-400">↕ % do canal na empresa</span>
                 <span class="text-xs text-amber-400">↔ % da empresa no canal</span>
             </div>
@@ -484,6 +501,7 @@
                         @endforelse
                     </tbody>
                 </table>
+            </div>
             </div>
         </section>
 
