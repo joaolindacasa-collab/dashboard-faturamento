@@ -17,6 +17,27 @@
         return '<span class="text-gray-500">→ ' . $abs . '</span>';
     };
 
+    // Mini-gráfico (sparkline) SVG a partir de uma série numérica. Usado nos tooltips.
+    $spark = function (array $series, string $color = '#7c5cff', int $w = 220, int $h = 36) {
+        $series = array_values(array_map('floatval', $series));
+        $n = count($series);
+        if ($n < 2) {
+            return '';
+        }
+        $min = min($series);
+        $max = max($series);
+        $range = ($max - $min) ?: 1;
+        $dx = $w / ($n - 1);
+        $pts = [];
+        foreach ($series as $i => $v) {
+            $x = $i * $dx;
+            $y = $h - (($v - $min) / $range) * ($h - 4) - 2;
+            $pts[] = round($x, 1) . ',' . round($y, 1);
+        }
+        return '<svg viewBox="0 0 ' . $w . ' ' . $h . '" preserveAspectRatio="none" style="width:100%;height:' . $h . 'px;display:block">'
+            . '<polyline fill="none" stroke="' . $color . '" stroke-width="2" points="' . implode(' ', $pts) . '"/></svg>';
+    };
+
     $d = $data;
 @endphp
 
@@ -265,16 +286,25 @@
                                     @foreach ($fd['days'] as $day)
                                         @php
                                             $barPct = $day['total'] / $axisMax * 100;
-                                            $tip = 'Dia ' . $day['dia'] . ' · ' . $money($day['total']);
-                                            foreach ($cos as $co) {
-                                                $vv = $day['values'][$co['slug']] ?? 0;
-                                                if ($vv > 0) {
-                                                    $pp = $day['total'] > 0 ? round($vv / $day['total'] * 100) : 0;
-                                                    $tip .= ' · ' . $co['name'] . ' ' . $money($vv) . ' (' . $pp . '%)';
-                                                }
-                                            }
                                         @endphp
-                                        <div class="flex-1 flex flex-col justify-end h-full hover:opacity-90 transition-opacity rounded-sm {{ $day['is_weekend'] ? 'bg-white/[0.04]' : '' }}" title="{{ $tip }}">
+                                        <div class="flex-1 flex flex-col justify-end h-full hover:opacity-90 transition-opacity rounded-sm {{ $day['is_weekend'] ? 'bg-white/[0.04]' : '' }}" data-tip>
+                                            <div class="tipc hidden">
+                                                <div class="font-semibold text-white mb-1">Dia {{ substr($day['date'], 8, 2) }}/{{ substr($day['date'], 5, 2) }}
+                                                    @if ($day['is_today'])<span class="text-amber-300 font-normal">· hoje (parcial)</span>@elseif ($day['is_weekend'])<span class="text-gray-500 font-normal">· fim de semana</span>@endif
+                                                </div>
+                                                <div class="flex justify-between gap-6 mb-1"><span class="text-gray-400">Total</span><span class="text-gray-100 font-medium">{{ $money($day['total']) }}</span></div>
+                                                <div class="space-y-0.5">
+                                                    @foreach ($cos as $co)
+                                                        @php $vv = $day['values'][$co['slug']] ?? 0; $pp = $day['total'] > 0 ? round($vv / $day['total'] * 100) : 0; @endphp
+                                                        @if ($vv > 0)
+                                                            <div class="flex items-center justify-between gap-6">
+                                                                <span class="flex items-center gap-1.5 text-gray-400"><span class="h-2 w-2 rounded-sm" style="background: {{ $co['color'] }}"></span>{{ $co['name'] }}</span>
+                                                                <span class="text-gray-100">{{ $money($vv) }} <span class="text-gray-500">({{ $pp }}%)</span></span>
+                                                            </div>
+                                                        @endif
+                                                    @endforeach
+                                                </div>
+                                            </div>
                                             <div class="flex flex-col-reverse rounded-t-sm overflow-hidden {{ $day['is_today'] ? 'ring-1 ring-amber-300/80' : '' }}" style="height: {{ $barPct }}%">
                                                 @foreach ($cos as $co)
                                                     @php
@@ -325,9 +355,35 @@
                     </thead>
                     <tbody>
                         @foreach ($d['por_empresa'] as $r)
-                            <tr class="border-b border-[#161a2c]">
+                            @php
+                                $serieCo = array_map(fn ($day) => $day['values'][$r['slug']] ?? 0, $d['faturamento_diario']['days']);
+                                $chOfCo = [];
+                                foreach ($d['matrix'] as $mrow) {
+                                    $cv = $mrow['cells'][$r['slug']]['value'] ?? 0;
+                                    if ($cv > 0) { $chOfCo[$mrow['canal']] = $cv; }
+                                }
+                                arsort($chOfCo);
+                            @endphp
+                            <tr class="border-b border-[#161a2c] hover:bg-white/[0.025]" data-tip>
                                 <td class="py-2 flex items-center gap-2">
                                     <span class="h-2 w-2 rounded-full" style="background: {{ $r['color'] }}"></span>{{ $r['name'] }}
+                                    <div class="tipc hidden">
+                                        <div class="font-semibold text-white mb-1.5 flex items-center gap-1.5"><span class="h-2 w-2 rounded-full" style="background: {{ $r['color'] }}"></span>{{ $r['name'] }} <span class="text-gray-500 font-normal">· {{ $d['month_short'] }}</span></div>
+                                        {!! $spark($serieCo, $r['color']) !!}
+                                        <div class="mt-2 space-y-0.5">
+                                            <div class="flex justify-between gap-6"><span class="text-gray-400">Faturamento</span><span class="text-gray-100">{{ $money($r['fat']) }}</span></div>
+                                            <div class="flex justify-between gap-6"><span class="text-gray-400">Pedidos</span><span class="text-gray-100">{{ $int($r['ped']) }}</span></div>
+                                            <div class="flex justify-between gap-6"><span class="text-gray-400">Ticket médio</span><span class="text-gray-100">{{ $money($r['ticket']) }}</span></div>
+                                        </div>
+                                        @if (count($chOfCo))
+                                            <div class="mt-2 mb-0.5 text-[10px] uppercase tracking-wide text-gray-500">Canais</div>
+                                            <div class="space-y-0.5">
+                                                @foreach (array_slice($chOfCo, 0, 6, true) as $cn => $cv)
+                                                    <div class="flex justify-between gap-6"><span class="text-gray-400">{{ $cn }}</span><span class="text-gray-100">{{ $money($cv) }}</span></div>
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </div>
                                 </td>
                                 <td class="text-right text-gray-200">{{ $money($r['fat']) }}</td>
                                 <td class="text-right text-gray-400">{{ $int($r['ped']) }}</td>
@@ -415,6 +471,10 @@
         <p class="text-center text-[11px] text-gray-700 pt-2">Dashboard de Faturamento · Tiny ERP v3</p>
     </div>
 
+    {{-- Tooltip flutuante: o conteúdo vem do .tipc do elemento com data-tip --}}
+    <div id="tip" class="fixed z-50 pointer-events-none opacity-0 transition-opacity duration-100 bg-[#10132a] border border-[#272c45] rounded-lg shadow-2xl p-3 text-xs text-gray-200"
+         style="min-width:200px;max-width:320px;left:-9999px;top:-9999px"></div>
+
     <script>
         function liveReload(initialSecs) {
             return {
@@ -450,6 +510,38 @@
                 },
             };
         }
+
+        // ---- Tooltips ricos: card flutuante com o conteúdo do .tipc do elemento [data-tip] ----
+        (function () {
+            const tip = document.getElementById('tip');
+            if (!tip) return;
+            let active = null;
+            const show = (el) => {
+                const c = el.querySelector('.tipc');
+                if (!c) return;
+                tip.innerHTML = c.innerHTML;
+                tip.classList.remove('opacity-0');
+                active = el;
+            };
+            const hide = () => { tip.classList.add('opacity-0'); tip.style.left = '-9999px'; active = null; };
+            const move = (e) => {
+                const pad = 14, r = tip.getBoundingClientRect();
+                let x = e.clientX + pad, y = e.clientY + pad;
+                if (x + r.width > window.innerWidth) x = e.clientX - pad - r.width;
+                if (y + r.height > window.innerHeight) y = e.clientY - pad - r.height;
+                tip.style.left = Math.max(4, x) + 'px';
+                tip.style.top = Math.max(4, y) + 'px';
+            };
+            document.addEventListener('mouseover', (e) => {
+                const el = e.target.closest('[data-tip]');
+                if (el && el !== active) { show(el); move(e); }
+            });
+            document.addEventListener('mousemove', (e) => { if (active) move(e); });
+            document.addEventListener('mouseout', (e) => {
+                const el = e.target.closest('[data-tip]');
+                if (el && !el.contains(e.relatedTarget)) hide();
+            });
+        })();
     </script>
 </body>
 </html>
