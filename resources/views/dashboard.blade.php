@@ -45,20 +45,39 @@
 <html lang="pt-BR" class="dark">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Faturamento · Live</title>
+
+    {{-- PWA / iOS: instalável na tela de início, tela cheia, respeita o notch --}}
+    <meta name="theme-color" content="#0a0b14">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Faturamento">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/icons/icon-180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <style>
         body { background:#0a0b14; }
         .panel { background:#0f111e; border:1px solid #1e2235; }
         .lbl { letter-spacing:.08em; }
+        /* PWA no iPhone: soma o inset da safe-area (notch/barra de status/home)
+           ao padding base, sem perder o respiro em telas normais. */
+        .safe {
+            padding-top: max(1rem, env(safe-area-inset-top));
+            padding-left: max(1rem, env(safe-area-inset-left));
+            padding-right: max(1rem, env(safe-area-inset-right));
+            padding-bottom: max(1rem, env(safe-area-inset-bottom));
+        }
     </style>
 </head>
 <body class="text-gray-200 antialiased"
       x-data="liveReload({{ (int) (request()->cookie('reload_secs', 120)) }})" x-init="init()">
 
-    <div class="max-w-[1400px] mx-auto px-4 py-4 space-y-4">
+    <div class="max-w-[1400px] mx-auto safe space-y-4">
 
         {{-- ============ HEADER ============ --}}
         <header class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
@@ -90,7 +109,7 @@
                 <span class="flex items-center gap-1.5 text-gray-400" title="Última sync OK: {{ $sync['at'] ?? '—' }}">
                     <span class="h-2 w-2 rounded-full {{ $dot }}"></span> {{ $syncTxt }}
                 </span>
-                <span class="text-gray-400">
+                <span class="text-gray-400 hidden sm:inline">
                     Próximo reload em <span class="text-gray-200 font-medium" x-text="countdownLabel()"></span>
                 </span>
 
@@ -104,7 +123,7 @@
                     </select>
                 </form>
 
-                <div class="flex items-center gap-1">
+                <div class="items-center gap-1 hidden sm:flex">
                     <label class="text-gray-500">Reload</label>
                     <select x-model="secs" @change="setSecs()"
                             class="bg-[#161a2c] border border-[#272c45] text-gray-200 text-xs rounded-md py-1 pl-2 pr-7 focus:ring-indigo-500 focus:border-indigo-500">
@@ -315,7 +334,7 @@
                                                     @if ($v > 0)
                                                         <div class="flex items-center justify-center overflow-hidden" style="height: {{ $segPct }}%; background: {{ $co['color'] }}">
                                                             @if ($segPx >= 13)
-                                                                <span class="text-[9px] font-semibold leading-none text-white" style="text-shadow:0 1px 2px rgba(0,0,0,.55)">{{ number_format($segPct, 0) }}%</span>
+                                                                <span class="hidden sm:inline text-[9px] font-semibold leading-none text-white" style="text-shadow:0 1px 2px rgba(0,0,0,.55)">{{ number_format($segPct, 0) }}%</span>
                                                             @endif
                                                         </div>
                                                     @endif
@@ -511,7 +530,9 @@
             };
         }
 
-        // ---- Tooltips ricos: card flutuante com o conteúdo do .tipc do elemento [data-tip] ----
+        // ---- Tooltips ricos: card flutuante com o conteúdo do .tipc do [data-tip] ----
+        // Desktop: segue o cursor (hover). Touch (iOS): toque abre/fecha o card,
+        // ancorado ao elemento; tocar fora fecha. Sem hover, nada ficava acessível.
         (function () {
             const tip = document.getElementById('tip');
             if (!tip) return;
@@ -524,7 +545,7 @@
                 active = el;
             };
             const hide = () => { tip.classList.add('opacity-0'); tip.style.left = '-9999px'; active = null; };
-            const move = (e) => {
+            const atCursor = (e) => {
                 const pad = 14, r = tip.getBoundingClientRect();
                 let x = e.clientX + pad, y = e.clientY + pad;
                 if (x + r.width > window.innerWidth) x = e.clientX - pad - r.width;
@@ -532,16 +553,44 @@
                 tip.style.left = Math.max(4, x) + 'px';
                 tip.style.top = Math.max(4, y) + 'px';
             };
-            document.addEventListener('mouseover', (e) => {
-                const el = e.target.closest('[data-tip]');
-                if (el && el !== active) { show(el); move(e); }
-            });
-            document.addEventListener('mousemove', (e) => { if (active) move(e); });
-            document.addEventListener('mouseout', (e) => {
-                const el = e.target.closest('[data-tip]');
-                if (el && !el.contains(e.relatedTarget)) hide();
-            });
+            const atElement = (el) => {
+                const rc = el.getBoundingClientRect(), r = tip.getBoundingClientRect();
+                let x = rc.left, y = rc.bottom + 8;
+                if (x + r.width > window.innerWidth - 8) x = window.innerWidth - 8 - r.width;
+                if (x < 8) x = 8;
+                if (y + r.height > window.innerHeight - 8) y = rc.top - 8 - r.height; // acima se não couber
+                if (y < 8) y = 8;
+                tip.style.left = x + 'px';
+                tip.style.top = y + 'px';
+            };
+
+            const hoverCapable = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+            if (hoverCapable) {
+                document.addEventListener('mouseover', (e) => {
+                    const el = e.target.closest('[data-tip]');
+                    if (el && el !== active) { show(el); atCursor(e); }
+                });
+                document.addEventListener('mousemove', (e) => { if (active) atCursor(e); });
+                document.addEventListener('mouseout', (e) => {
+                    const el = e.target.closest('[data-tip]');
+                    if (el && !el.contains(e.relatedTarget)) hide();
+                });
+            } else {
+                document.addEventListener('click', (e) => {
+                    const el = e.target.closest('[data-tip]');
+                    if (el) {
+                        if (active === el) { hide(); } else { show(el); atElement(el); }
+                    } else if (active) {
+                        hide();
+                    }
+                });
+            }
         })();
+
+        // ---- PWA: registra o service worker (habilita instalação na tela de início) ----
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+        }
     </script>
 </body>
 </html>
