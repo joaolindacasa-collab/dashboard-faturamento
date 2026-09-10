@@ -99,6 +99,7 @@ return [
         'magazine luiza' => 'Magalu',
         'magalu marketplace' => 'Magalu', // mesmo canal que 'Magalu', p/ comparativo
         'amazon' => 'Amazon',
+        'amazon fba classic' => 'Amazon', // mesmo canal que 'Amazon', p/ comparativo
         'yampi' => 'Yampi',
         'linda casa' => 'Yampi',
         'loja virtual' => 'Yampi',
