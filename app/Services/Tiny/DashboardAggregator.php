@@ -249,7 +249,8 @@ class DashboardAggregator
         $serieDias = [];
         $serieMax = 0.0;
         for ($dia = 1; $dia <= $lastDay; $dia++) {
-            $dateStr = $monthStart->copy()->day($dia)->toDateString();
+            $dayDate = $monthStart->copy()->day($dia);
+            $dateStr = $dayDate->toDateString();
             $vals = [];
             $tot = 0.0;
             foreach ($slugs as $slug) {
@@ -258,7 +259,14 @@ class DashboardAggregator
                 $tot += $v;
             }
             $serieMax = max($serieMax, $tot);
-            $serieDias[] = ['dia' => $dia, 'date' => $dateStr, 'values' => $vals, 'total' => round($tot, 2)];
+            $serieDias[] = [
+                'dia'        => $dia,
+                'date'       => $dateStr,
+                'values'     => $vals,
+                'total'      => round($tot, 2),
+                'is_weekend' => in_array($dayDate->dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY], true),
+                'is_today'   => $isCurrent && $dia === $daysElapsed, // dia parcial em curso
+            ];
         }
         // empresas ordenadas pelo faturamento do mês (maior primeiro = base da pilha, colada no eixo X)
         $ordered = $slugs;

@@ -17,6 +17,27 @@
         return '<span class="text-gray-500">→ ' . $abs . '</span>';
     };
 
+    // Mini-gráfico (sparkline) SVG a partir de uma série numérica. Usado nos tooltips.
+    $spark = function (array $series, string $color = '#7c5cff', int $w = 220, int $h = 36) {
+        $series = array_values(array_map('floatval', $series));
+        $n = count($series);
+        if ($n < 2) {
+            return '';
+        }
+        $min = min($series);
+        $max = max($series);
+        $range = ($max - $min) ?: 1;
+        $dx = $w / ($n - 1);
+        $pts = [];
+        foreach ($series as $i => $v) {
+            $x = $i * $dx;
+            $y = $h - (($v - $min) / $range) * ($h - 4) - 2;
+            $pts[] = round($x, 1) . ',' . round($y, 1);
+        }
+        return '<svg viewBox="0 0 ' . $w . ' ' . $h . '" preserveAspectRatio="none" style="width:100%;height:' . $h . 'px;display:block">'
+            . '<polyline fill="none" stroke="' . $color . '" stroke-width="2" points="' . implode(' ', $pts) . '"/></svg>';
+    };
+
     $d = $data;
 @endphp
 
@@ -45,14 +66,29 @@
                 <h1 class="text-xl font-bold text-white flex items-center gap-2">
                     Faturamento <span class="text-rose-500">·</span> <span class="text-rose-400">Live</span>
                 </h1>
+                @php
+                    // Empresas ativas no mês visto (some quem foi removida — ex.: GV a partir de ago/26).
+                    $coNames = collect($d['companies'])->map(fn ($c) => explode(' ', $c['name'])[0])->implode(' · ');
+                @endphp
                 <p class="text-xs text-gray-500 mt-0.5">
-                    Bella · Linda · GV — {{ $d['month_label'] }} · até dia {{ $d['days_elapsed'] }} vs. mesmo período de {{ $d['prev_short'] }}
+                    {{ $coNames }} — {{ $d['month_label'] }} ·
+                    @if ($d['is_current'])
+                        até dia {{ $d['days_elapsed'] }} vs. mesmo período de {{ $d['prev_short'] }}
+                    @else
+                        mês fechado vs. {{ $d['prev_short'] }}
+                    @endif
                 </p>
             </div>
 
             <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-                <span class="flex items-center gap-1.5 text-gray-400">
-                    <span class="h-2 w-2 rounded-full bg-amber-400"></span> Gerado {{ $d['generated_at'] }}
+                @php
+                    // Indicador de frescor: verde (<=15min), amarelo (<=90min), vermelho (mais/sem sync).
+                    $age = $sync['age_min'] ?? null;
+                    $dot = $age === null ? 'bg-rose-500' : ($age <= 15 ? 'bg-emerald-400' : ($age <= 90 ? 'bg-amber-400' : 'bg-rose-500'));
+                    $syncTxt = $age === null ? 'sem sync' : ($age < 1 ? 'sincronizado agora' : 'sincronizado há ' . $age . ' min');
+                @endphp
+                <span class="flex items-center gap-1.5 text-gray-400" title="Última sync OK: {{ $sync['at'] ?? '—' }}">
+                    <span class="h-2 w-2 rounded-full {{ $dot }}"></span> {{ $syncTxt }}
                 </span>
                 <span class="text-gray-400">
                     Próximo reload em <span class="text-gray-200 font-medium" x-text="countdownLabel()"></span>
@@ -96,16 +132,28 @@
         </header>
 
         {{-- ============ FATURAMENTO DO DIA (por empresa) ============ --}}
-        @php $h = $d['hoje']; @endphp
+        @php
+            $h = $d['hoje'];
+            // Dia CORRENTE = parcial (só foi até agora). Comparar com o dia inteiro de
+            // ontem daria uma queda enorme e falsa de manhã, então não mostramos o Δ;
+            // exibimos o valor de ontem só como referência ("dia todo"). Em dias fechados
+            // (histórico) o comparativo é dia-cheio vs dia-cheio, aí o Δ vale.
+            $live = $h['is_today'];
+        @endphp
         <section class="panel rounded-xl p-4">
             <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
-                <div class="text-[11px] lbl uppercase text-gray-500">
-                    Faturamento de {{ $h['is_today'] ? 'hoje' : 'último dia' }}
-                    <span class="text-gray-600">({{ $h['date_label'] }})</span>
+                <div class="text-[11px] lbl uppercase text-gray-500 flex items-center gap-2">
+                    <span>Faturamento de {{ $live ? 'hoje' : 'último dia' }} <span class="text-gray-600">({{ $h['date_label'] }})</span></span>
+                    @if ($live)
+                        <span class="normal-case tracking-normal text-[10px] font-medium text-amber-400/90 bg-amber-400/10 rounded px-1.5 py-0.5">parcial</span>
+                    @endif
                 </div>
                 <div class="text-xs text-gray-500">
-                    {{ $h['is_today'] ? 'Ontem' : 'Dia anterior' }} ({{ $h['prev_date_label'] }}):
-                    {{ $money($h['total_prev']) }} {!! $delta($h['total_delta']) !!}
+                    @if ($live)
+                        Ontem ({{ $h['prev_date_label'] }}), dia todo: <span class="text-gray-400">{{ $money($h['total_prev']) }}</span>
+                    @else
+                        Dia anterior ({{ $h['prev_date_label'] }}): {{ $money($h['total_prev']) }} {!! $delta($h['total_delta']) !!}
+                    @endif
                 </div>
             </div>
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -115,14 +163,26 @@
                             <span class="h-2 w-2 rounded-full" style="background: {{ $r['color'] }}"></span>{{ $r['name'] }}
                         </div>
                         <div class="text-2xl font-bold text-white mt-1">{{ $money($r['hoje']) }}</div>
-                        <div class="text-[11px] text-gray-500 mt-0.5">{!! $delta($r['delta']) !!} vs. {{ $h['prev_date_label'] }}</div>
+                        <div class="text-[11px] text-gray-500 mt-0.5">
+                            @if ($live)
+                                <span class="text-gray-600">ontem: {{ $money($r['ontem']) }}</span>
+                            @else
+                                {!! $delta($r['delta']) !!} vs. {{ $h['prev_date_label'] }}
+                            @endif
+                        </div>
                     </div>
                 @endforeach
                 {{-- total consolidado do dia --}}
                 <div class="rounded-lg bg-[#11131f] border border-[#242a41] p-3">
                     <div class="text-xs text-gray-400 uppercase tracking-wide">Total do dia</div>
                     <div class="text-2xl font-bold text-white mt-1">{{ $money($h['total']) }}</div>
-                    <div class="text-[11px] text-gray-500 mt-0.5">{!! $delta($h['total_delta']) !!} vs. {{ $h['prev_date_label'] }}</div>
+                    <div class="text-[11px] text-gray-500 mt-0.5">
+                        @if ($live)
+                            <span class="text-gray-600">ontem: {{ $money($h['total_prev']) }}</span>
+                        @else
+                            {!! $delta($h['total_delta']) !!} vs. {{ $h['prev_date_label'] }}
+                        @endif
+                    </div>
                 </div>
             </div>
         </section>
@@ -226,17 +286,26 @@
                                     @foreach ($fd['days'] as $day)
                                         @php
                                             $barPct = $day['total'] / $axisMax * 100;
-                                            $tip = 'Dia ' . $day['dia'] . ' · ' . $money($day['total']);
-                                            foreach ($cos as $co) {
-                                                $vv = $day['values'][$co['slug']] ?? 0;
-                                                if ($vv > 0) {
-                                                    $pp = $day['total'] > 0 ? round($vv / $day['total'] * 100) : 0;
-                                                    $tip .= ' · ' . $co['name'] . ' ' . $money($vv) . ' (' . $pp . '%)';
-                                                }
-                                            }
                                         @endphp
-                                        <div class="flex-1 flex flex-col justify-end h-full hover:opacity-90 transition-opacity" title="{{ $tip }}">
-                                            <div class="flex flex-col-reverse rounded-t-sm overflow-hidden" style="height: {{ $barPct }}%">
+                                        <div class="flex-1 flex flex-col justify-end h-full hover:opacity-90 transition-opacity rounded-sm {{ $day['is_weekend'] ? 'bg-white/[0.04]' : '' }}" data-tip>
+                                            <div class="tipc hidden">
+                                                <div class="font-semibold text-white mb-1">Dia {{ substr($day['date'], 8, 2) }}/{{ substr($day['date'], 5, 2) }}
+                                                    @if ($day['is_today'])<span class="text-amber-300 font-normal">· hoje (parcial)</span>@elseif ($day['is_weekend'])<span class="text-gray-500 font-normal">· fim de semana</span>@endif
+                                                </div>
+                                                <div class="flex justify-between gap-6 mb-1"><span class="text-gray-400">Total</span><span class="text-gray-100 font-medium">{{ $money($day['total']) }}</span></div>
+                                                <div class="space-y-0.5">
+                                                    @foreach ($cos as $co)
+                                                        @php $vv = $day['values'][$co['slug']] ?? 0; $pp = $day['total'] > 0 ? round($vv / $day['total'] * 100) : 0; @endphp
+                                                        @if ($vv > 0)
+                                                            <div class="flex items-center justify-between gap-6">
+                                                                <span class="flex items-center gap-1.5 text-gray-400"><span class="h-2 w-2 rounded-sm" style="background: {{ $co['color'] }}"></span>{{ $co['name'] }}</span>
+                                                                <span class="text-gray-100">{{ $money($vv) }} <span class="text-gray-500">({{ $pp }}%)</span></span>
+                                                            </div>
+                                                        @endif
+                                                    @endforeach
+                                                </div>
+                                            </div>
+                                            <div class="flex flex-col-reverse rounded-t-sm overflow-hidden {{ $day['is_today'] ? 'ring-1 ring-amber-300/80' : '' }}" style="height: {{ $barPct }}%">
                                                 @foreach ($cos as $co)
                                                     @php
                                                         $v = $day['values'][$co['slug']] ?? 0;
@@ -259,7 +328,7 @@
                             {{-- eixo X: todo dia rotulado --}}
                             <div class="flex gap-px mt-1">
                                 @foreach ($fd['days'] as $day)
-                                    <div class="flex-1 text-center text-[8px] text-gray-500 tabular-nums">{{ $day['dia'] }}</div>
+                                    <div class="flex-1 text-center text-[8px] tabular-nums {{ $day['is_today'] ? 'text-amber-300 font-bold' : ($day['is_weekend'] ? 'text-gray-600' : 'text-gray-500') }}">{{ $day['dia'] }}</div>
                                 @endforeach
                             </div>
                         </div>
@@ -286,9 +355,35 @@
                     </thead>
                     <tbody>
                         @foreach ($d['por_empresa'] as $r)
-                            <tr class="border-b border-[#161a2c]">
+                            @php
+                                $serieCo = array_map(fn ($day) => $day['values'][$r['slug']] ?? 0, $d['faturamento_diario']['days']);
+                                $chOfCo = [];
+                                foreach ($d['matrix'] as $mrow) {
+                                    $cv = $mrow['cells'][$r['slug']]['value'] ?? 0;
+                                    if ($cv > 0) { $chOfCo[$mrow['canal']] = $cv; }
+                                }
+                                arsort($chOfCo);
+                            @endphp
+                            <tr class="border-b border-[#161a2c] hover:bg-white/[0.025]" data-tip>
                                 <td class="py-2 flex items-center gap-2">
                                     <span class="h-2 w-2 rounded-full" style="background: {{ $r['color'] }}"></span>{{ $r['name'] }}
+                                    <div class="tipc hidden">
+                                        <div class="font-semibold text-white mb-1.5 flex items-center gap-1.5"><span class="h-2 w-2 rounded-full" style="background: {{ $r['color'] }}"></span>{{ $r['name'] }} <span class="text-gray-500 font-normal">· {{ $d['month_short'] }}</span></div>
+                                        {!! $spark($serieCo, $r['color']) !!}
+                                        <div class="mt-2 space-y-0.5">
+                                            <div class="flex justify-between gap-6"><span class="text-gray-400">Faturamento</span><span class="text-gray-100">{{ $money($r['fat']) }}</span></div>
+                                            <div class="flex justify-between gap-6"><span class="text-gray-400">Pedidos</span><span class="text-gray-100">{{ $int($r['ped']) }}</span></div>
+                                            <div class="flex justify-between gap-6"><span class="text-gray-400">Ticket médio</span><span class="text-gray-100">{{ $money($r['ticket']) }}</span></div>
+                                        </div>
+                                        @if (count($chOfCo))
+                                            <div class="mt-2 mb-0.5 text-[10px] uppercase tracking-wide text-gray-500">Canais</div>
+                                            <div class="space-y-0.5">
+                                                @foreach (array_slice($chOfCo, 0, 6, true) as $cn => $cv)
+                                                    <div class="flex justify-between gap-6"><span class="text-gray-400">{{ $cn }}</span><span class="text-gray-100">{{ $money($cv) }}</span></div>
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </div>
                                 </td>
                                 <td class="text-right text-gray-200">{{ $money($r['fat']) }}</td>
                                 <td class="text-right text-gray-400">{{ $int($r['ped']) }}</td>
@@ -376,6 +471,10 @@
         <p class="text-center text-[11px] text-gray-700 pt-2">Dashboard de Faturamento · Tiny ERP v3</p>
     </div>
 
+    {{-- Tooltip flutuante: o conteúdo vem do .tipc do elemento com data-tip --}}
+    <div id="tip" class="fixed z-50 pointer-events-none opacity-0 transition-opacity duration-100 bg-[#10132a] border border-[#272c45] rounded-lg shadow-2xl p-3 text-xs text-gray-200"
+         style="min-width:200px;max-width:320px;left:-9999px;top:-9999px"></div>
+
     <script>
         function liveReload(initialSecs) {
             return {
@@ -411,6 +510,38 @@
                 },
             };
         }
+
+        // ---- Tooltips ricos: card flutuante com o conteúdo do .tipc do elemento [data-tip] ----
+        (function () {
+            const tip = document.getElementById('tip');
+            if (!tip) return;
+            let active = null;
+            const show = (el) => {
+                const c = el.querySelector('.tipc');
+                if (!c) return;
+                tip.innerHTML = c.innerHTML;
+                tip.classList.remove('opacity-0');
+                active = el;
+            };
+            const hide = () => { tip.classList.add('opacity-0'); tip.style.left = '-9999px'; active = null; };
+            const move = (e) => {
+                const pad = 14, r = tip.getBoundingClientRect();
+                let x = e.clientX + pad, y = e.clientY + pad;
+                if (x + r.width > window.innerWidth) x = e.clientX - pad - r.width;
+                if (y + r.height > window.innerHeight) y = e.clientY - pad - r.height;
+                tip.style.left = Math.max(4, x) + 'px';
+                tip.style.top = Math.max(4, y) + 'px';
+            };
+            document.addEventListener('mouseover', (e) => {
+                const el = e.target.closest('[data-tip]');
+                if (el && el !== active) { show(el); move(e); }
+            });
+            document.addEventListener('mousemove', (e) => { if (active) move(e); });
+            document.addEventListener('mouseout', (e) => {
+                const el = e.target.closest('[data-tip]');
+                if (el && !el.contains(e.relatedTarget)) hide();
+            });
+        })();
     </script>
 </body>
 </html>
